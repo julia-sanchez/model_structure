@@ -34,6 +34,7 @@ public:
     std::map<std::pair<double, double>, std::pair<Eigen::Vector3d, Eigen::Vector3d>> getMap(){return planes;}
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> getImageBound(){return image_boundaries;}
     void setRotAxis(Eigen::Vector3d axis){rot_axis = axis;}
+    void setAxisInitPhi(Eigen::Vector3d axis){axis_init_phi = axis;}
     int getSize() const {return cloud->size();}
     void getNormals(double);
     void sample(double);

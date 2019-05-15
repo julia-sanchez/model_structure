@@ -1,4 +1,4 @@
-manager::manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int Nc, double pa, double ta, int mc)
+manager::manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int Nc, double pa, double ta, int mc, Eigen::Vector3d ra, Eigen::Vector3d aip)
 {
     cloud = c;
     man3D.setInputCloud(c);
@@ -17,11 +17,16 @@ manager::manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int 
     }
     inter_remaining.isLine = false;
     inter_remaining.isObstruction = true;
+    lim_theta.first = -1;
+    lim_theta.second = -1;
+    rot_axis = ra;
+    axis_init_phi = aip;
 }
 
 void manager::quantifyPhiTheta()
 {
     int n = 0;
+    XY2PtN.clear();
     delta_phi = (phi_app+epsilon)/Nrow;
     delta_theta = (theta_app+epsilon)/Ncol;
     for(auto it = PhiTheta2PtN.begin(); it!=PhiTheta2PtN.end(); ++it)
@@ -35,10 +40,11 @@ void manager::quantifyPhiTheta()
     std::cout<<"points non inserted in XY2PtN because same X and same Y (due to 3d noise affecting small theta): "<<n<<std::endl<<std::endl;
 }
 
-void manager::initSearchCluster(double rad, Eigen::Vector3d rot_axis)
+void manager::initSearchCluster(double rad)
 {
     man3D.getNormals(rad);
     man3D.setRotAxis(rot_axis);
+    man3D.setAxisInitPhi(axis_init_phi);
     man3D.createMap();
     PhiTheta2PtN = man3D.getMap();
     quantifyPhiTheta();
@@ -110,7 +116,7 @@ void manager::clusterized2Image()
             {
                 auto idx_found_XY2PtN = XY2PtN.find(std::make_pair(i,j));
                 if(idx_found_XY2PtN!=XY2PtN.end()) // ... but existing in first place
-                    image_clusterized_indices(i,j) = planes.size()+1; // put indice of another cluster
+                    image_clusterized_indices(i,j) = planes.size()+1; // create new cluster (index : planes.size()+1) and put indice of this new cluster
             }
         }
     }
@@ -118,24 +124,26 @@ void manager::clusterized2Image()
 
 bool manager::isSeed(std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator it, int radius, double thresh_neigh_for_seed)
 {
+    //les voisins sont choisis sur l'image donc ils peuvent etre trèès proches en points 3D
     std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> neigh = getNeighbors(it, radius);
     Eigen::Vector3d mean_pt;
-    for(int i = 0; i< neigh.size(); ++i)
-        mean_pt += neigh[i]->second.first;
+//    for(int i = 0; i< neigh.size(); ++i)
+//        mean_pt += neigh[i]->second.first;
 
-    mean_pt /= neigh.size();
+//    mean_pt /= neigh.size();
     mean_pt = it->second.first;
 
     for(int i = 0; i< neigh.size(); ++i)
     {
         double dist_neigh = abs(neigh[i]->second.first.dot(neigh[i]->second.second));
         double dist = abs(mean_pt.dot(it->second.second));
-        if( abs(dist- dist_neigh) > thresh_neigh_for_seed || abs(neigh[i]->second.second.dot(it->second.second))<normals_similarity_threshold_to_select_seed)
+        if( abs(dist- dist_neigh) > thresh_neigh_for_seed)
             return false;
+//        double dist = abs((mean_pt-neigh[i]->second.first).dot(it->second.second));
+//        if( dist > thresh_neigh_for_seed || abs(neigh[i]->second.second.dot(it->second.second))<normals_similarity_threshold_to_select_seed)
+//            return false;
     }
-    it->second.first = mean_pt;
     return true;
-//    return man3D.isSeed(it->second.first, it->second.second, 0.1, thresh_neigh_for_seed);
 }
 
 void manager::searchClusters(double thresh_plane_belonging, int radius, double thresh_neigh_for_seed) // create the object regions in which there is a vector of points with their associated mode
@@ -143,10 +151,13 @@ void manager::searchClusters(double thresh_plane_belonging, int radius, double t
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed_seed = Eigen::MatrixXi::Zero(Nrow, Ncol).cast<bool>();
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed_growing = Eigen::MatrixXi::Zero(Nrow, Ncol).cast<bool>();
     pcl::PointCloud<pcl::PointXYZ> pc_clus;
+    regions.resize(0);
+
+    detect_margin();
 
     for(auto it = XY2PtN.begin(); it != XY2PtN.end(); ++it)
     {
-        if(!processed_seed(it->first.first, it->first.second)) // in order not to process one point which has already been selected in a cluster
+        if(!processed_seed(it->first.first, it->first.second) && it->first.second > (lim_theta.first+10) && it->first.second < (lim_theta.second-10)) // in order not to process one point which has already been selected in a cluster
         {
             pc_clus.points.resize(0);
             if(isSeed(it, radius, thresh_neigh_for_seed))
@@ -158,32 +169,32 @@ void manager::searchClusters(double thresh_plane_belonging, int radius, double t
                 for(int i = 0; i<region.size(); ++i)
                 {
                     std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> neighbors = getNeighbors(region[i], pixel_radius_for_growing);
-                    bool all_neigh_with_non_coherent_normal = true;
+                    bool at_least_one_inlier = false;
                     for(int k = 0; k<neighbors.size(); ++k)
                     {
-                        if(abs(neighbors[k]->second.second.dot(it->second.second))>normals_similarity_to_add_neighbors)
+                        if(abs(neighbors[k]->second.second.dot(it->second.second))>normals_similarity_to_add_neighbors && abs((neighbors[k]->second.first-it->second.first).dot(it->second.second)) < thresh_plane_belonging)
                         {
-                            all_neigh_with_non_coherent_normal = false;
+                            at_least_one_inlier = true;
                             break;
                         }
                     }
-                    if(!all_neigh_with_non_coherent_normal)
+                    if(at_least_one_inlier)
                     {
                         for(int k = 0; k<neighbors.size(); ++k)
                         {
                             if(!processed_growing(neighbors[k]->first.first, neighbors[k]->first.second)) //in order not to process twice one neighbor
                             {
-                                if(abs((neighbors[k]->second.first-it->second.first).dot(it->second.second)) < thresh_plane_belonging)// && acos(neighbors[k]->second.dot(it->second)/(neighbors[k]->second.norm()*it->second.norm())) < thresh_angle )
-                                {
+//                                if(abs((neighbors[k]->second.first-it->second.first).dot(it->second.second)) < thresh_plane_belonging)// && acos(neighbors[k]->second.dot(it->second)/(neighbors[k]->second.norm()*it->second.norm())) < thresh_angle )
+//                                {
                                     processed_growing(neighbors[k]->first.first, neighbors[k]->first.second) = true;
                                     region.push_back(neighbors[k]);
 
-                                    pcl::PointXYZ pt_clus;
-                                    pt_clus.x = neighbors[k]->second.first(0);
-                                    pt_clus.y = neighbors[k]->second.first(1);
-                                    pt_clus.z = neighbors[k]->second.first(2);
-                                    pc_clus.points.push_back(pt_clus);
-                                }
+//                                    pcl::PointXYZ pt_clus;
+//                                    pt_clus.x = neighbors[k]->second.first(0);
+//                                    pt_clus.y = neighbors[k]->second.first(1);
+//                                    pt_clus.z = neighbors[k]->second.first(2);
+//                                    pc_clus.points.push_back(pt_clus);
+//                                }
                             }
                         }
                     }
@@ -198,7 +209,6 @@ void manager::searchClusters(double thresh_plane_belonging, int radius, double t
                     cluster_normal *= cluster_distance;
                     regions.push_back(std::make_pair(region, cluster_normal));
                     std::cout<<"New region number: "<< regions.size()-1 << std::endl<< "seed : "<<it->first.first<<" "<<it->first.second<<"-->"<<it->second.first.transpose()<<std::endl<<"normal : "<<it->second.second.transpose()<<std::endl<<"distance : "<<cluster_distance<<std::endl<<"number of points : "<<region.size()<<std::endl<<std::endl;
-                    seeds.push_back(it);
 //                    std::vector<Eigen::MatrixXi, Eigen::aligned_allocator<Eigen::MatrixXi>> test(3);
 //                    test[0] = coeffWiseMulti(image_init[0], processed_seed.cast<int>());
 //                    test[1] = coeffWiseMulti(image_init[1], processed_seed.cast<int>());
@@ -213,6 +223,7 @@ void manager::searchClusters(double thresh_plane_belonging, int radius, double t
 
 //                    system("bash pcd2csv.sh cloud_clus.pcd");
 
+//                    std::cout<<"searchClusters 1 "<<std::endl<<std::endl;
 //                    getchar();
 //                    getchar();
                 }
@@ -221,77 +232,89 @@ void manager::searchClusters(double thresh_plane_belonging, int radius, double t
     }
 }
 
-void manager::cleanClusters() // from regions, keep all points in XY2Plane_clusterized and then clean points having various modes
+void manager::cleanClusters() // from regions, keep all points in XY2Plane_idx and then clean points having various modes
 {
-    XY2Plane_clusterized.clear();
-    XY2Plane_clusterized_clean.clear();
-    doubt.resize(regions.size(), regions.size());
-    for(auto it = regions.begin(); it!=regions.end(); ++it) // for each cluster
+    //regions = vector of ( (vector of iterators) , (plane)) (with iterator = XY2PtN)
+    XY2Plane_idx.clear();
+    for(int k = 0; k < regions.size(); ++k) // for each cluster
     {
-        for(int i = 0; i<it->first.size(); ++i)
-            XY2Plane_clusterized.insert(std::make_pair(it->first[i]->first, it->second));
+        for(int i = 0; i<regions[k].first.size(); ++i)
+            XY2Plane_idx.insert(std::make_pair(regions[k].first[i]->first, std::make_pair(k,i))); // Plane_idx = pair(idx_region, idx_XY2PtN)
     }
 
-    std::cout<<"Number of points in XY2Plane_clusterized "<<XY2Plane_clusterized.size()<<std::endl<<std::endl;
+    std::cout<<"Number of points in XY2Plane_idx "<<XY2Plane_idx.size()<<std::endl<<std::endl;
 
     std::cout<<"Start cleaning points having various clusters "<<std::endl<<std::endl;
     int n =0;
+    planes.clear();
     planes.resize(regions.size());
-    for(auto it = XY2Plane_clusterized.begin(); it!=XY2Plane_clusterized.end(); ++it) // for each cluster
+    std::pair<std::pair<int,int>, std::pair<int,int>> inserted;
+    for(auto it_XY2Plane_idx = XY2Plane_idx.begin(); it_XY2Plane_idx!=XY2Plane_idx.end(); ++it_XY2Plane_idx) // for each cluster
     {
-        auto it_XY2PtN = XY2PtN.find(it->first);              // search in imageRGBf the initial normal of point-> { (X,Y), [(px,py,pz)(nx,ny,nz)]}
-        int cnt = XY2Plane_clusterized.count(it->first);
-        if(cnt>1) // points which belong to various clusters
+        auto it_XY2PtN = regions[it_XY2Plane_idx->second.first].first[it_XY2Plane_idx->second.second];
+
+        std::vector<std::multimap<std::pair<int,int>, std::pair<int,int>>::iterator> sameXY; // points XY with all associated clusters
+        int Xinit = it_XY2Plane_idx->first.first;
+        int Yinit = it_XY2Plane_idx->first.second;
+        while(it_XY2Plane_idx->first.first == Xinit && it_XY2Plane_idx->first.second == Yinit)
+        {
+            sameXY.push_back(it_XY2Plane_idx);
+            ++it_XY2Plane_idx;
+        }
+
+        --it_XY2Plane_idx;
+
+        if(sameXY.size()>1) // points which belong to various clusters
         {
             //Count points which have multiple modes
             ++n;
 
             //Select the best cluster (mode most similar)
-            auto it_multiple_limits = XY2Plane_clusterized.equal_range(it->first);
-            std::map<double, std::multimap<std::pair<int,int>, Eigen::Vector3d>::iterator> dotty;
-            for(auto it_multiple = it_multiple_limits.first; it_multiple != it_multiple_limits.second; ++it_multiple)
+
+            //order and select the most likely knowing its own normal
+            std::map<double, std::pair<int,int>> dotty; // pour mapper
+            for(int k = 0; k<sameXY.size(); ++k)
             {
-                double dot = (it_multiple->second/it_multiple->second.norm()).dot(it_XY2PtN->second.second); // compute scalar product between real normal and region normal
-                dotty.insert(std::make_pair(dot, it_multiple));                     // keep result in map to order scalar product and select the region normal which is more similar
+                double dot = (regions[sameXY[k]->second.first].second/regions[sameXY[k]->second.first].second.norm()).dot(it_XY2PtN->second.second); // compute scalar product between real normal and region normal
+                dotty.insert(std::make_pair(dot, sameXY[k]->second));                     // keep result in map to order scalar product and select the region normal which is more similar
             }
+
             auto it_map = dotty.end();
-            --it_map;                                                               // it_map is the ptr of [ scalar_product, idx] with idx corresponding to the more similar region normal
+            --it_map;                                                               // it_map is the ptr of [ scalar_product, iter] with iter corresponding to the more similar region normal
+            if(abs(regions[it_map->second.first].second.norm()-abs(it_XY2PtN->second.first.dot((regions[it_map->second.first].second/regions[it_map->second.first].second.norm())))) > 0.1)
+                --it_map;
 
-            XY2Plane_clusterized_clean.insert(std::make_pair(it->first, it_map->second->second));
-
-            //Actualize iterator
-            for(int i =1; i!=cnt; ++i)
-                ++it;
+            if( abs( ((regions[it_XY2Plane_idx->second.first].second/regions[it_XY2Plane_idx->second.first].second.norm()).dot(it_XY2PtN->second.second)) ) > normals_similarity_threshold_for_cleaning_when_one_cluster )
+                inserted = std::make_pair(it_XY2Plane_idx->first, it_map->second);
+            else
+                inserted = std::make_pair(std::make_pair(-1,-1), std::make_pair(-1,-1));
         }
         else // points which belong to one unique cluster
         {
-            if( abs( ((it->second/it->second.norm()).dot(it_XY2PtN->second.second)) ) > normals_similarity_threshold_for_cleaning_when_one_cluster )
-                XY2Plane_clusterized_clean.insert(std::make_pair(it->first, it->second));
+            if( abs( ((regions[it_XY2Plane_idx->second.first].second/regions[it_XY2Plane_idx->second.first].second.norm()).dot(it_XY2PtN->second.second)) ) > normals_similarity_threshold_for_cleaning_when_one_cluster )
+                inserted = *it_XY2Plane_idx;
+            else
+                inserted = std::make_pair(std::make_pair(-1,-1), std::make_pair(-1,-1));
         }
 
         // To recompute planes features with cleaned points :
-
-        auto it_XY2Plane_clusterized_clean_found = XY2Plane_clusterized_clean.find(it->first);
-        for(int i = 0; i<regions.size(); ++i)
+        if(inserted.first.first>=0) // if the point was inserted
         {
-            if(it_XY2Plane_clusterized_clean_found != XY2Plane_clusterized_clean.end() && (it_XY2Plane_clusterized_clean_found->second-regions[i].second).norm()<epsilon)
-            {
-                planes[i].seed = seeds[i];
-                planes[i].appendPoint(it_XY2PtN->second.first); // add points belonging to the plane i
-                planes[i].appendPixel(it_XY2PtN->first);
-                break;
-            }
+            planes[inserted.second.first].appendPoint(it_XY2PtN->second.first);
+            planes[inserted.second.first].appendPixel(inserted.first);
         }
     }
 
     std::cout<<"Stop cleaning points having various clusters "<<std::endl<<std::endl;
+
+    //------------------------------------------------------------------------------------------------------------------
 
     std::cout<<"Start recomputing normal and distance "<<std::endl<<std::endl;
     //Recompute features
 
     for(int i = 0; i<planes.size(); ++i)
     {
-        if(planes[i].points.rows()>min_number_of_pixels)    // keep only clusters with more than 100 points
+        if(planes[i].pts.size()>min_number_of_pixels)    // keep only clusters with more than 100 points
         {
             planes[i].computeNormal();                      //recompute normal with points detected in plane
             planes[i].index = i;
@@ -306,27 +329,7 @@ void manager::cleanClusters() // from regions, keep all points in XY2Plane_clust
 
     std::cout<<"Stop recomputing normal and distance "<<std::endl<<std::endl;
 
-    // Use planes to correct XY2Plane_clusterized_clean planes
-    for(auto it = XY2Plane_clusterized_clean.begin(); it!=XY2Plane_clusterized_clean.end();) // for each cluster
-    {
-        int i;
-        for(i = 0; i<planes.size(); ++i)
-        {
-            if((it->second-regions[i].second).norm()<epsilon)
-            {
-                it->second = planes[i].normal * planes[i].distance;
-                break;
-            }
-            if(i == planes.size()-1)
-            {
-                it = XY2Plane_clusterized_clean.erase(it);
-                --it;
-            }
-        }
-        ++it;
-    }
-
-    processed_planes = Eigen::MatrixXi::Zero(planes.size(), planes.size()).cast<bool>();
+    processed_planes = Eigen::MatrixXi::Zero(planes.size()+1, planes.size()+1).cast<bool>();
     std::cout<<"Number of points which have multiple modes : "<<n<<std::endl<<std::endl;
 }
 
@@ -346,17 +349,8 @@ std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vecto
     else
         finitx = it->first.first+rad - Nrow;
 
-    int inity;
-    int finity;
-    if(it->first.second-rad>0)
-        inity = it->first.second-rad;
-    else
-        inity = 0;
-
-    if(it->first.second+rad<Ncol)
-        finity = it->first.second+rad;
-    else
-        finity = Ncol-1;
+    int inity = std::max(it->first.second-rad, 0);
+    int finity = std::min(it->first.second+rad, Ncol-1);
 
     for(int i = initx; i != finitx; ++i)
     {
@@ -364,7 +358,7 @@ std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vecto
             i = -1;
         else
         {
-            for(int j = inity; j != finity; ++j)
+            for(int j = inity; j <= finity; ++j)
             {
                 auto idx = XY2PtN.find(std::make_pair(i,j));
                 if(idx != XY2PtN.end())
@@ -375,12 +369,21 @@ std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vecto
     return neighbors;
 }
 
+bool cmp_vector3d(Eigen::Vector3d a, Eigen::Vector3d b)
+{
+    if(abs(a(0)-b(0))>epsilon)
+        return (a(0)<b(0));
+    else if (abs(a(1)-b(1))>epsilon)
+        return (a(1)<b(1));
+    else
+        return (a(2)<b(2));
+}
+
 void manager::extractBoundImage()
 {
-    man2D.setImageClusterized(image_clusterized_indices); // image_clusterized_indices is a matrix which contains the indices of planes (+1 to let 0 be the non cluster)
+    man2D.setImageClusterized(image_clusterized_indices, lim_theta); // image_clusterized_indices is a matrix which contains the indices of planes (+1 to let 0 be the non cluster)
     man2D.setMaxCol(max_col);
     pcl::PointCloud<pcl::PointXYZ> all_boundaries;
-    std::vector<std::vector<intersection>> vec_openings(planes.size());
     edges.resize(planes.size()+1);
     system("rm results/binarized*.pgm");
     system("rm results/morpho*.pgm");
@@ -389,11 +392,14 @@ void manager::extractBoundImage()
     system("rm results/all_boundaries.pcd");
     system("rm results/*.csv");
     system("rm theoritical_line*.csv");
-    system("rm theoritical_corner*.csv");
+    system("rm Vertices.csv");
     system("rm cloud_boundary_*.pcd");
     system("rm cloud_boundary_*.csv");
+    system("rm real_*.csv");
 
     std::stringstream stm;
+    int n = 0;
+    all_edges.resize(0);
 
     for(int k = 0; k<planes.size(); ++k)
     {
@@ -401,36 +407,49 @@ void manager::extractBoundImage()
         //binarize
         man2D.binarize(k);
         Eigen::Matrix<bool,Eigen::Dynamic, Eigen::Dynamic> binarized = man2D.getImBinarized();
+        save_image_pgm("binarized", std::to_string(k), binarized.cast<int>()*max_col, max_col);
 
         //apply closure
         Eigen::Matrix<bool, 5, 5> SE_morpho;
         SE_morpho<<true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true;
         man2D.closure(SE_morpho);
         Eigen::Matrix<bool,Eigen::Dynamic, Eigen::Dynamic> morpho = man2D.getImBinarizedMorpho();
+        save_image_pgm("morpho", std::to_string(k), morpho.cast<int>()*max_col, max_col);
 
         //compute boundary on image
         Eigen::Matrix<bool, 3, 3> SE_grad;
         SE_grad<<true, true, true, true, true, true, true, true, true;
-        int margin = (int)(theta_margin/delta_theta); // where we start to take the thetas into account
-        man2D.computeBoundaries(SE_grad, margin);
+        man2D.computeBoundaries(SE_grad);
         boundary = man2D.getBoundaries();
+
+        Eigen::MatrixXi boundary_image = man2D.getBoundariesImage();
+        save_image_pgm("boundary", std::to_string(k), boundary_image, max_col);
 
         pcl::PointCloud<pcl::PointXYZ> cloud_boundary = extractBoundCloud();
         all_boundaries += cloud_boundary;
 
-        std::cout<<"Start computing theoritical connexions"<<std::endl;
+        std::cout<<"Start computing theoritical connexions"<<std::endl<<std::endl;
         computeConnections(k); // compute theoritical line corresponding to each pixel of the boundary + fill pixels corresponding to this intersection
         for(int i = 0; i<intersections.size(); ++i)
         {
-            if(intersections[i].isLine)
-                edges[intersections[i].plane_ref->index].push_back(intersections[i]);
-            else
-                edges[planes.size()].push_back(intersections[i]);
-            if((intersections[i].isOpening || intersections[i].isObstruction) && intersections[i].isLine)
-                vec_openings[intersections[i].plane_ref->index].push_back(intersections[i]);
+            all_edges.push_back(intersections[i]);
+            if(intersections[i].isLine)  // keep it in planes indices of "edges"
+            {
+                all_edges[n].computeLim();
+                edges[all_edges[n].plane_ref->index].push_back(n);
+                if(all_edges[n].plane_ref->index != all_edges[n].plane_neigh->index)
+                    edges[all_edges[n].plane_neigh->index].push_back(n);
+            }
+            else                        //keep it in other indices of "edges"
+                edges[planes.size()].push_back(n);
+
+            all_edges[n].plane_ref->intersections_indices.push_back(n);
+            all_edges[n].plane_neigh->intersections_indices.push_back(n);
+            ++n;
         }
-        std::cout<<"Number of openings edges in this plane : "<<vec_openings[k].size()<<std::endl<<std::endl;
-        std::cout<<"Number of edges : "<<intersections.size()<<std::endl<<std::endl;
+
+        std::cout<<"-------------------------------------------------------------------"<<std::endl;
+        std::cout<<"Number of edges : "<<intersections.size()<<std::endl;
         std::cout<<"Stop computing connexions"<<std::endl<<std::endl;
 
         //visualization------------------------------------------------------------------------------------------------------------------
@@ -443,86 +462,65 @@ void manager::extractBoundImage()
         std::string command = stm2.str();
         system(command.c_str());
 
-        save_image_pgm("binarized", std::to_string(k), binarized.cast<int>()*max_col, max_col);
-        save_image_pgm("morpho", std::to_string(k), morpho.cast<int>()*max_col, max_col);
-        Eigen::MatrixXi boundary_image = man2D.getBoundariesImage();
-        save_image_pgm("boundary", std::to_string(k), boundary_image, max_col);
+//        save_image_pgm("binarized", std::to_string(k), binarized.cast<int>()*max_col, max_col);
+//        save_image_pgm("morpho", std::to_string(k), morpho.cast<int>()*max_col, max_col);
+//        Eigen::MatrixXi boundary_image = man2D.getBoundariesImage();
+//        save_image_pgm("boundary", std::to_string(k), boundary_image, max_col);
         //--------------------------------------------------------------------------------------------------------------------------------
     }
 
     std::cout<<"Start computing theoritical corners"<<std::endl;
-    computeCorners();
-    computeTheoriticalLinesIntersections(vec_openings);
+
+    computeTheoriticalPlanesIntersections(); // for 3 planes intersection
+    computeTheoriticalLinesIntersections(); // for 2 edges of one plane intersection
     std::cout<<"Stop computing theoritical corners"<<std::endl<<std::endl;
 
-    std::vector< std::vector< Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > > LineIntersections;
-    LineIntersections.resize(planes.size());
+    std::vector<Eigen::Vector3d> theoretical_corner_points (corners.size());
+
+    for(int i = 0; i < corners.size(); ++i)
+        theoretical_corner_points[i] = corners[i].pt;
 
     float delta = 0.01;
-    for(int k = 0; k<edges.size(); ++k)
-    {
-        std::cout<<"Plane number : "<<k<<std::endl;
-        std::cout<<"-------------------------------------------------------------"<<std::endl<<std::endl;
 
-        std::set<int> indices_possible_inter3D;
-        for(int l = 0; l<edges[k].size(); ++l)
+    std::set< Eigen::Vector3d, decltype(&cmp_vector3d) > vertices(&cmp_vector3d);
+
+    stm.str("");
+    stm<<"Vertices.csv";
+    std::ofstream file_vertices(stm.str());
+    for(int k = 0; k<all_edges.size(); ++k)
+    {
+        if(all_edges[k].isLine)
         {
-            if(edges[k][l].isLine)
+            std::cout<<"Intersection number : "<<k<<std::endl<<std::endl;
+            all_edges[k].selectCorners(4, delta_phi, delta_theta, rot_axis, axis_init_phi);
+
+            stm.str("");
+            stm<<"theoritical_line_"<<k<<".csv";
+            std::ofstream file(stm.str());
+            int n = 0;
+            while (n*delta+all_edges[k].start<all_edges[k].end)
             {
-                std::cout<<"Intersection number : "<<l<<std::endl<<std::endl;
-                edges[k][l].computeLim(corners, possible_inter3D[k]);
-                for(int m = 0; m<edges[k][l].theoriticalLineIntersection.size(); ++m)
-                    indices_possible_inter3D.insert(edges[k][l].theoriticalLineIntersection[m]);
-
-                stm.str("");
-                stm<<"theoritical_line_"<<k<<"_"<<l<<".csv";
-                std::ofstream file(stm.str());
-                int n = 0;
-                while (n*delta+edges[k][l].start<edges[k][l].end)
-                {
-                    file << ((n*delta+edges[k][l].start) * edges[k][l].tangente + edges[k][l].distance*edges[k][l].normal).transpose()<<"\n";
-                    ++n;
-                }
-                file.close();
+                file << ((n*delta+all_edges[k].start) * all_edges[k].tangente + all_edges[k].distance*all_edges[k].normal).transpose()<<"\n";
+                ++n;
             }
-        }
+            file.close();
 
-        for(auto it_indices_possible_inter3D = indices_possible_inter3D.begin(); it_indices_possible_inter3D != indices_possible_inter3D.end(); ++it_indices_possible_inter3D)
-            LineIntersections[k].push_back(possible_inter3D[k][*it_indices_possible_inter3D]);
-    }
+            vertices.insert(all_edges[k].start_pt);
 
-    if(corners.size() != 0)
-    {
-        stm.str("");
-        stm<<"theoritical_corners.csv";
-        std::ofstream file(stm.str());
+            file_vertices << all_edges[k].start_pt(0)<<","<<all_edges[k].start_pt(1)<<","<<all_edges[k].start_pt(2)<<"\n";
+            file_vertices << all_edges[k].end_pt(0)<<","<<all_edges[k].end_pt(1)<<","<<all_edges[k].end_pt(2)<<"\n";
 
-        for(int l = 0; l<corners.size(); ++l)
-            file << corners[l].pt.transpose()<<"\n";
-        file.close();
-    }
-
-    pcl::PointCloud<pcl::PointXYZ> LineIntersections_pc;
-
-    for( int k = 0; k<LineIntersections.size(); ++k)
-    {
-        for( int l = 0; l<LineIntersections[k].size(); ++l)
-        {
-            pcl::PointXYZ pt;
-            pt.x = LineIntersections[k][l](0);
-            pt.y = LineIntersections[k][l](1);
-            pt.z = LineIntersections[k][l](2);
-            LineIntersections_pc.push_back(pt);
+            stm.str("");
+            stm<<"real_line_"<<k<<".csv";
+            std::ofstream file_real_intersection(stm.str());
+            for(int pt_idx = 0; pt_idx<all_edges[k].points.size(); ++pt_idx)
+                file_real_intersection << all_edges[k].points[pt_idx](0)<<","<<all_edges[k].points[pt_idx](1)<<","<<all_edges[k].points[pt_idx](2)<<"\n";
         }
     }
 
-    LineIntersections_pc.width = LineIntersections_pc.points.size();
-    LineIntersections_pc.height = 1;
-    LineIntersections_pc.is_dense = false;
-    pcl::io::savePCDFileASCII ("results/LineIntersections.pcd", LineIntersections_pc);
+    file_vertices.close();
+
     pcl::io::savePCDFileASCII ("results/all_boundaries.pcd", all_boundaries);
-
-    system("bash pcd2csv.sh results/LineIntersections.pcd");
     system("bash pcd2csv.sh results/all_boundaries.pcd");
 }
 
@@ -576,37 +574,94 @@ void manager::computeConnections(int idx_plane)
     std::map<int, int> idx_plane2idx_intersection;
 
     std::cout<<"size boundary before :"<<boundary.size()<<std::endl<<std::endl;
-    //1_ process neighboring planes
-    for(auto it_boundary = boundary.begin(); it_boundary != boundary.end();)//++it_boundary)
+
+    //Remember : If i am stydying plane P and a pixel px belongs to P and has a neighbor pixel belonging to a neighbor plane Pn -> the index of px is the index of Pn
+
+    //1_ process neighboring planes ( connection or obstruction)
+    for(auto it_boundary = boundary.begin(); it_boundary != boundary.end();)
     {
         idx_plane_neighbor = it_boundary->second;
 
-        if(idx_plane_neighbor-1 != planes.size() && idx_plane_neighbor != idx_plane) // if(idx_plane == planes.size()), it means that there is an obstructing object
+        if(idx_plane_neighbor != idx_plane && idx_plane_neighbor-1 != planes.size())
         {
             if(!processed_planes(idx_plane_neighbor-1, idx_plane-1)) // to not process intersection if the neighbor plane has already been processed
             {
                 //Compute theoritical intersection with first pixel encountered
-                if(!processed_planes(idx_plane-1, idx_plane_neighbor-1)) // to not process the pixels if the intersection has already been processed with other pixel
+                if(!processed_planes(idx_plane-1, idx_plane_neighbor-1)) // to not add new intersection if it has not already been processed with other pixel
                 {
-                    processed_planes(idx_plane-1, idx_plane_neighbor-1) = true; // to process only the first pixel of this color
+                    processed_planes(idx_plane-1, idx_plane_neighbor-1) = true; // to process only the first pixel encountered of this color (from this neighbor plane)
                     intersection inter (&planes[idx_plane-1], &planes[idx_plane_neighbor-1], delta_phi, delta_theta);
                     intersections.push_back(inter);
                     idx_plane2idx_intersection.insert(std::make_pair(idx_plane_neighbor-1, intersections_number)); //save which neighboring plane correspond to which intersection number
                     ++intersections_number;
                 }
 
-                //fill the points closest to the intersection
+                auto idx_found_XY2PtN = XY2PtN.find(it_boundary->first);
                 // put current boundary point into the attribute "pixels" of the specific intersection
                 intersections[idx_plane2idx_intersection[idx_plane_neighbor-1]].pixels.push_back(it_boundary->first);
                 // put current boundary point into the attribute "points" of the specific intersection
-                auto idx_found_XY2PtN = XY2PtN.find(it_boundary->first);
-                if(idx_found_XY2PtN!=XY2PtN.end())
-                    intersections[idx_plane2idx_intersection[idx_plane_neighbor-1]].points.push_back(idx_found_XY2PtN->second.first);
-                else
-                    std::cout<<"did not find this boundary point in XY2PtN"<<std::endl<<std::endl;
+                intersections[idx_plane2idx_intersection[idx_plane_neighbor-1]].points.push_back(idx_found_XY2PtN->second.first);
             }
 
-            //erase points of the same studied plane to be sure not to detect false openings
+            //erase neighboring points of the same studied plane to be sure not to detect false openings
+            int rad = 2;
+            int min_ki = std::max(it_boundary->first.first-rad, 0);
+            int max_ki = std::min(it_boundary->first.first+rad, Nrow-1);
+            int min_kj = std::max(it_boundary->first.second-rad, 0);
+            int max_kj = std::min(it_boundary->first.second+rad, Ncol-1);
+
+            for(int ki = min_ki; ki<=max_ki; ++ki)
+            {
+                for(int kj = min_kj; kj<=max_kj; ++kj)
+                {
+                    auto it_found_boundary = boundary.find(std::make_pair(ki, kj));
+                    if(it_found_boundary != boundary.end())
+                    {
+                        if(it_found_boundary->second == idx_plane || it_found_boundary->second-1 == planes.size())
+                            boundary.erase(it_found_boundary);
+                    }
+                }
+            }
+
+            //erase current studied point
+            it_boundary = boundary.erase(it_boundary);
+        }
+        else
+            ++it_boundary;
+    }
+
+    std::cout<<"size boundary after connection pixels :"<<boundary.size()<<std::endl<<std::endl;
+
+    //2_ process obstruction by object
+    for(auto it_boundary = boundary.begin(); it_boundary != boundary.end();)
+    {
+        idx_plane_neighbor = it_boundary->second;
+
+        if(idx_plane_neighbor-1 == planes.size()) // if there is an obstructing OBJECT
+        {
+            if(!processed_planes(idx_plane_neighbor-1, idx_plane-1)) // to not process intersection if the neighbor plane has already been processed
+            {
+                //Compute theoritical intersection with first pixel encountered
+                if(!processed_planes(idx_plane-1, idx_plane_neighbor-1)) // to not add new intersection if it has already been processed with other pixel
+                {
+                    processed_planes(idx_plane-1, idx_plane_neighbor-1) = true; // to process only the first pixel encountered of this color (from this neighbor plane)
+                    intersection inter (&planes[idx_plane-1], &planes[idx_plane-1], delta_phi, delta_theta);
+                    inter.isObstruction = true;
+                    intersections.push_back(inter);
+                    idx_plane2idx_intersection.insert(std::make_pair(idx_plane_neighbor-1, intersections_number)); //save which neighboring plane correspond to which intersection number
+                    std::cout<<" intersections_number : "<<intersections_number<<"  is an obstruction by object"<<std::endl;
+                    ++intersections_number;
+                }
+
+                auto idx_found_XY2PtN = XY2PtN.find(it_boundary->first);
+
+                // put current boundary point into the attribute "pixels" of the specific intersection
+                intersections[idx_plane2idx_intersection[idx_plane_neighbor-1]].other_pixels.push_back(it_boundary->first);
+                // put current boundary point into the attribute "points" of the specific intersection
+                intersections[idx_plane2idx_intersection[idx_plane_neighbor-1]].other_points.push_back(idx_found_XY2PtN->second.first);
+            }
+
+            //erase neighboring points of the same studied plane to be sure not to detect false openings
             int rad = 2;
             int min_ki = std::max(it_boundary->first.first-rad, 0);
             int max_ki = std::min(it_boundary->first.first+rad, Nrow-1);
@@ -633,13 +688,15 @@ void manager::computeConnections(int idx_plane)
             ++it_boundary;
     }
 
-    //2_ process remaining = openings
+    std::cout<<"size boundary after obstruction by object pixels :"<<boundary.size()<<std::endl<<std::endl;
+
+    //3_ process remaining = openings
     bool first_time = true;
     for(auto it_boundary = boundary.begin(); it_boundary != boundary.end();)
     {
         idx_plane_neighbor = it_boundary->second;
 
-        if(idx_plane_neighbor == idx_plane) // idx_plane == planes.size(), means that there is an obstructing object
+        if(idx_plane_neighbor == idx_plane) // if it belongs to an opening
         {
             if(!processed_planes(idx_plane_neighbor-1, idx_plane-1)) // to not process intersection if the neighbor plane has already been processed
             {
@@ -647,6 +704,7 @@ void manager::computeConnections(int idx_plane)
                 if(first_time) // to not process the pixels if the intersection has already been processed with other pixel
                 {
                     intersection inter (&planes[idx_plane-1], &planes[idx_plane_neighbor-1], delta_phi, delta_theta);
+                    inter.isOpening = true;
                     intersections.push_back(inter);
                     idx_plane2idx_intersection.insert(std::make_pair(idx_plane_neighbor-1, intersections_number)); //save which neighboring plane correspond to which intersection number
                     ++intersections_number;
@@ -670,82 +728,135 @@ void manager::computeConnections(int idx_plane)
 
     std::cout<<"size boundary after opening pixels :"<<boundary.size()<<std::endl<<std::endl;
 
+    //--------------------------------------------------------------------------------------------------------------------------------------
+
     //Define the type of connection and compute limits of lines
     for (int k = 0; k<intersections.size(); ++k)
     {
+        std::cout<<"-------------------------------------------------------"<<std::endl<<std::endl;
         std::cout<<"Intersection number : "<<k<<std::endl<<std::endl;
+
+        std::cout<<"Number of pixels of this intersection : "<<intersections[k].pixels.size()<<std::endl;
+        std::cout<<"Number of other_pixels of this intersection : "<<intersections[k].other_pixels.size()<<std::endl<<std::endl;
+
         if(intersections[k].plane_ref->index == intersections[k].plane_neigh->index) // if opening or detected obstruction
         {
-            if(!intersections[k].isObstruction)
-                intersections[k].isOpening = true;
-
-            if(!intersections[k].isObstruction)
+            if(intersections[k].isObstruction)
+                std::cout<<"It is an obstruction baby"<<std::endl<<std::endl;
+            else if (intersections[k].isOpening)
                 std::cout<<"It is an opening"<<std::endl<<std::endl;
             else
-                std::cout<<"It is an obstruction"<<std::endl<<std::endl;
+                std::cout<<"Problem : it has not been labeled :'( "<<std::endl<<std::endl;
 
-            if(intersections[k].other_points.size()>5)
+            intersections[k].computeTheoriticalLineFeatures(); //Hough or RANSAC to detect the main line of the intersection
+
+            if(intersections[k].points.size()>min_number_points_on_line) // if the line found contains sufficient points
             {
-                intersections[k].computeTheoriticalLineFeatures(); //Hough or RANSAC
-                if(intersections[k].points.size()>10) // if it is a line with sufficient points
+                std::cout<<"normal : "<<intersections[k].normal.transpose()<<"   tangente : "<<intersections[k].tangente.transpose()<<"  distance : "<<intersections[k].distance<<"  initial point : "<<intersections[k].pt.transpose()<<std::endl<<std::endl;
+                processed_planes(intersections[k].plane_neigh->index, intersections[k].plane_ref->index) = true;
+                intersections[k].isLine = true;
+
+                //create new intersections to look for more lines in remaining points (only if there are sufficient remaining points)
+
+                if(intersections[k].other_points.size()>min_number_points_on_line)
                 {
-                    //Continue process of intersection
-                    std::cout<<"normal : "<<intersections[k].normal.transpose()<<"   tangente : "<<intersections[k].tangente.transpose()<<"  distance : "<<intersections[k].distance<<"  initial point : "<<intersections[k].pt.transpose()<<std::endl<<std::endl;
-                    processed_planes(intersections[k].plane_neigh->index, intersections[k].plane_ref->index) = true;
-                    intersections[k].isLine = true;
-                    //create new intersections to look for more lines in remaining points
                     intersection inter(intersections[k].plane_neigh, intersections[k].plane_ref, delta_phi, delta_theta);
                     inter.other_points = intersections[k].other_points;
                     inter.other_pixels = intersections[k].other_pixels;
                     inter.isObstruction = intersections[k].isObstruction;
                     inter.isOpening  = intersections[k].isOpening;
+                    inter.isLine = false;
                     intersections.push_back(inter);
                     std::cout<<"The baby is : "<<intersections.size()-1<<std::endl<<std::endl;
                 }
-                else
-                    remove_intersection(k);
             }
             else
-               remove_intersection(k);
+            {
+                if(intersections[k].points.size() + intersections[k].other_points.size()>min_number_points_on_line) //if there remain enough points we consider this intersection is not modelisable by a line but it still exists
+                {
+                    std::cout<<"intersection n°"<<k<<" can not be modelize by a line because the best line found only contains = "<<intersections[k].points.size()<<" points"<<std::endl;
+                    intersections[k].points.insert(intersections[k].points.end(), intersections[k].other_points.begin(), intersections[k].other_points.end());
+                    intersections[k].isLine = false;
+                }
+                else // if there does not remain enough points we consider they are noise around the other intersection and we remove them
+                    remove_intersection(k);
+            }
         }
         else             //if connection or not detected obstruction
         {
-            if(intersections[k].points.size()>5)
+            std::cout<<"this intersection is a connection or an obstruction which has not been detected yet"<<std::endl;
+            int nbr_intersection_points_on_plane = 0;
+            for (auto it_points=intersections[k].points.begin(); it_points != intersections[k].points.end(); ++it_points)
+            {
+                if(abs(abs(it_points->dot(intersections[k].plane_ref->normal))-intersections[k].plane_ref->distance)<max_plane_distance)
+                    ++nbr_intersection_points_on_plane;
+            }
+
+
+            if(intersections[k].points.size()>min_number_points_on_line && nbr_intersection_points_on_plane>0)
             {
                 intersections[k].isOpening = false;
                 intersections[k].computeTheoriticalLineFeatures();
                 std::cout<<"normal : "<<intersections[k].normal.transpose()<<"   tangente : "<<intersections[k].tangente.transpose()<<"  distance : "<<intersections[k].distance<<"  initial point : "<<intersections[k].pt.transpose()<<std::endl<<std::endl;
                 processed_planes(intersections[k].plane_neigh->index, intersections[k].plane_ref->index) = true;
+
                 intersections[k].definePlaneConnection();               // define if the intersection is a real connection between planes or an obstruction (obstructed or obstructing) and if it is a line
+                                                                        //move all points which do not belong to a connection to other_points
+
                 if(intersections[k].isConnection)
                 {
-                    std::cout<<"It is a connection with plane n°"<<intersections[k].plane_ref->index<<std::endl<<std::endl;
+                    std::cout<<"There is a connection with plane n°"<<intersections[k].plane_neigh->index<<std::endl<<std::endl;
                     intersections[k].isLine = true;
+
+                    //remaining points may be obstructions
+
+                    if(intersections[k].other_points.size()>min_number_points_on_line)
+                    {
+                        //create new intersections with same
+                        intersection inter1 (intersections[k].plane_neigh, intersections[k].plane_neigh, delta_phi, delta_theta);
+                        inter1.pixels = intersections[k].pixels;
+                        inter1.other_points = intersections[k].other_points;
+                        inter1.other_pixels = intersections[k].other_pixels;
+                        inter1.isObstruction = true;
+                        intersections.push_back(inter1);
+
+                        intersection inter2 (intersections[k].plane_ref, intersections[k].plane_ref, delta_phi, delta_theta);
+                        inter2.pixels = intersections[k].pixels;
+                        inter2.other_points = intersections[k].other_points;
+                        inter2.other_pixels = intersections[k].other_pixels;
+                        inter2.isObstruction = true;
+                        intersections.push_back(inter2);
+
+                        std::cout<<"The baby obstructions are : "<<intersections.size()-2<<" and "<<intersections.size()-1<<std::endl<<std::endl;
+                    }
                 }
                 else
                 {
-                    std::cout<<"It is an obstruction"<<std::endl<<std::endl;
+                    std::cout<<"edge pixels show it is an obstruction"<<std::endl<<std::endl;
                     //create new intersections with same
                     intersection inter1 (intersections[k].plane_neigh, intersections[k].plane_neigh, delta_phi, delta_theta);
                     inter1.pixels = intersections[k].pixels;
-                    inter1.other_points = intersections[k].points;
-                    inter1.other_pixels = intersections[k].pixels;
+                    inter1.other_points = intersections[k].other_points;
+                    inter1.other_pixels = intersections[k].other_pixels;
                     inter1.isObstruction = true;
                     intersections.push_back(inter1);
 
                     intersection inter2 (intersections[k].plane_ref, intersections[k].plane_ref, delta_phi, delta_theta);
                     inter2.pixels = intersections[k].pixels;
-                    inter2.other_points = intersections[k].points;
-                    inter2.other_pixels = intersections[k].pixels;
+                    inter2.other_points = intersections[k].other_points;
+                    inter2.other_pixels = intersections[k].other_pixels;
                     inter2.isObstruction = true;
                     intersections.push_back(inter2);
                     intersections.erase(intersections.begin()+k);
                     --k;
-                    std::cout<<"The baby obstructions are : "<<intersections.size()-2<<" and "<<intersections.size()-1<<std::endl<<std::endl;
+                    std::cout<<"The baby obstructions are : "<<intersections.size()-2<<" with "<<inter1.other_points.size()<< " points"<<" and "<<intersections.size()-1<<" with "<<inter2.other_points.size()<< " points"<<std::endl<<std::endl;
                 }
             }
             else
+            {
+                std::cout<<"intersection n°"<<k<<" removed"<<std::endl;
                 remove_intersection(k);
+            }
         }
     }
 
@@ -775,62 +886,75 @@ void manager::remove_intersection(int k)
     --k;
 }
 
-void manager::computeTheoriticalLinesIntersections(std::vector<std::vector<intersection>> vec_openings)
+void manager::computeTheoriticalLinesIntersections()
 {
-    possible_inter3D.resize(planes.size());
-    for(int plane_idx = 0; plane_idx<vec_openings.size(); ++plane_idx)
+    for(int plane_idx = 0; plane_idx<planes.size(); ++plane_idx)
     {
-        if(vec_openings[plane_idx].size()>=2)
+        if(edges[plane_idx].size()>=2)
         {
-            for(int edge_idx = 0; edge_idx<vec_openings[plane_idx].size()-1; ++edge_idx)
+            for(int edge_idx = 0; edge_idx<edges[plane_idx].size()-1; ++edge_idx)
             {
-                for(int edge_idx_other = edge_idx+1; edge_idx_other<vec_openings[plane_idx].size(); ++edge_idx_other)
+                for(int edge_idx_other = edge_idx+1; edge_idx_other<edges[plane_idx].size(); ++edge_idx_other)
                 {
-                    if( abs(vec_openings[plane_idx][edge_idx].tangente2D.dot(vec_openings[plane_idx][edge_idx_other].tangente2D)) < 0.999)
+                    if(!all_edges[edges[plane_idx][edge_idx]].isConnection || !all_edges[edges[plane_idx][edge_idx_other]].isConnection)
                     {
-                        Eigen::Vector2d Dn = vec_openings[plane_idx][edge_idx].distance2D * vec_openings[plane_idx][edge_idx].normal2D - vec_openings[plane_idx][edge_idx_other].distance2D * vec_openings[plane_idx][edge_idx_other].normal2D;
-                        float X;
-
-                        float ax = pow(vec_openings[plane_idx][edge_idx_other].tangente2D(0),2) - pow(vec_openings[plane_idx][edge_idx].tangente2D(0),2);
-                        float bx = -2*vec_openings[plane_idx][edge_idx].tangente2D(0)*Dn(0);
-                        float cx = (pow(vec_openings[plane_idx][edge_idx].distance2D,2)-pow(vec_openings[plane_idx][edge_idx_other].distance2D,2))*pow(vec_openings[plane_idx][edge_idx_other].tangente2D(0),2)-pow(Dn(0),2);
-
-                        float ay = pow(vec_openings[plane_idx][edge_idx_other].tangente2D(1),2) - pow(vec_openings[plane_idx][edge_idx].tangente2D(1),2);
-                        float by = -2*vec_openings[plane_idx][edge_idx].tangente2D(1)*Dn(1);
-                        float cy = (pow(vec_openings[plane_idx][edge_idx].distance2D,2)-pow(vec_openings[plane_idx][edge_idx_other].distance2D,2))*pow(vec_openings[plane_idx][edge_idx_other].tangente2D(1),2)-pow(Dn(1),2);
-
-                        X = (cx*(ay/ax)-cy)/(by-bx*(ay/ax));
-
-                        Eigen::Vector2d pt_intersect2D = vec_openings[plane_idx][edge_idx].distance2D * vec_openings[plane_idx][edge_idx].normal2D + X * vec_openings[plane_idx][edge_idx].tangente2D;
-                        Eigen::Vector3d pt_intersect3D = {pt_intersect2D(0), pt_intersect2D(1), 0};
-                        pt_intersect3D = vec_openings[plane_idx][edge_idx].rot_inv.linear() * vec_openings[plane_idx][edge_idx].trans_z_inv*pt_intersect3D;
-
-                        possible_inter3D[plane_idx].push_back(pt_intersect3D);
+                        if(abs(all_edges[edges[plane_idx][edge_idx]].tangente.dot(all_edges[edges[plane_idx][edge_idx_other]].tangente)) < parallel_dot_threshold)
+                        {
+                            corner c;
+                            c.setLines(&all_edges[edges[plane_idx][edge_idx]], &all_edges[edges[plane_idx][edge_idx_other]]);
+                            c.computePointFromLines(plane_idx); // compute intersection point between lines on studied plane
+                            c.isPlaneIntersection = false;
+                            c.isLineIntersection = true;
+                            corners.push_back(c);
+                            std::cout<<"corner point : "<<c.pt.transpose()<<std::endl<<std::endl;
+                            all_edges[edges[plane_idx][edge_idx]].corner_indices.push_back(corners.size()-1);
+                            all_edges[edges[plane_idx][edge_idx]].theoreticalLim.push_back(c.pt);
+                            all_edges[edges[plane_idx][edge_idx_other]].corner_indices.push_back(corners.size()-1);
+                            all_edges[edges[plane_idx][edge_idx_other]].theoreticalLim.push_back(c.pt);
+                        }
                     }
                 }
             }
         }
-        std::cout<<"for plane n°"<<plane_idx<<"    number of intersections of lines points : "<<possible_inter3D[plane_idx].size()<<std::endl<<std::endl;
     }
 }
 
-void manager::computeCorners()
+void manager::computeTheoriticalPlanesIntersections()
 {
     corners.resize(0);
-    for(int i = 0; i<planes.size()-1; ++i)
+    for(int i = 0; i<all_edges.size()-1; ++i)
     {
-        for(int j = i+1; j<planes.size(); ++j)
+        if(all_edges[i].isConnection)
         {
-            if(planes[i].connected.find(planes[j].index) != planes[i].connected.end())
+            for(int j = i+1; j<all_edges.size(); ++j)
             {
-                for(int k = j+1; k<planes.size(); ++k)
+                if(all_edges[j].isConnection)
                 {
-                    if(planes[k].connected.find(planes[i].index) != planes[k].connected.end() && planes[k].connected.find(planes[j].index) != planes[k].connected.end())
+                    corner c;
+                    if(all_edges[i].plane_ref->index == all_edges[j].plane_ref->index || all_edges[i].plane_neigh->index == all_edges[j].plane_ref->index)
                     {
-                        corner c;
-                        c.setPlanes(&planes[i], &planes[j], &planes[k]);
-                        c.computePoint();
+                        c.setPlanes(all_edges[i].plane_ref, all_edges[i].plane_neigh, all_edges[j].plane_neigh);
+                        c.isPlaneIntersection = true;
+                        c.isLineIntersection = false;
+                        c.computePointFromPlanes();
                         corners.push_back(c);
+
+                        all_edges[i].corner_indices.push_back(corners.size()-1);
+                        all_edges[i].theoreticalLim.push_back(c.pt);
+                        all_edges[j].corner_indices.push_back(corners.size()-1);
+                        all_edges[j].theoreticalLim.push_back(c.pt);
+                    }
+                    else if(all_edges[i].plane_ref->index == all_edges[j].plane_neigh->index || all_edges[i].plane_neigh->index == all_edges[j].plane_neigh->index)
+                    {
+                        c.setPlanes(all_edges[i].plane_ref, all_edges[i].plane_neigh, all_edges[j].plane_ref);
+                        c.isPlaneIntersection = true;
+                        c.isLineIntersection = false;
+                        c.computePointFromPlanes();
+                        corners.push_back(c);
+                        all_edges[i].corner_indices.push_back(corners.size()-1);
+                        all_edges[i].theoreticalLim.push_back(c.pt);
+                        all_edges[j].corner_indices.push_back(corners.size()-1);
+                        all_edges[j].theoreticalLim.push_back(c.pt);
                     }
                 }
             }
@@ -848,41 +972,40 @@ void manager::searchClusters2(double thresh_plane_belonging) // create the objec
 
     for(int planes_it = 0; planes_it<planes.size(); ++planes_it)
     {
-        auto it = planes[planes_it].seed;
+        planes[planes_it].mean();
+        std::cout<<"seed : "<<planes[planes_it].seed.second.transpose()<<std::endl<<std::endl;
         pc_clus.points.resize(0);
         processed_growing = Eigen::MatrixXi::Zero(Nrow, Ncol).cast<bool>();
-        std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> region; // vector of iterator
-        region.push_back(it);
+        std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> region; // vector of iterator of XY2PtN
+        auto iter_seed = XY2PtN.find(std::make_pair(planes[planes_it].seed.first.first,planes[planes_it].seed.first.second));
+        region.push_back(iter_seed);
 
         for(int i = 0; i<region.size(); ++i)
         {
             std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> neighbors = getNeighbors(region[i], pixel_radius_for_growing);
-            bool all_neigh_with_non_coherent_normal = true;
+            bool at_least_one_inlier = true;
             for(int k = 0; k<neighbors.size(); ++k)
             {
-                if(abs(neighbors[k]->second.second.dot(planes[planes_it].normal))>normals_similarity_to_add_neighbors)
+                if(abs(neighbors[k]->second.second.dot(planes[planes_it].normal))>normals_similarity_to_add_neighbors && abs((neighbors[k]->second.first-planes[planes_it].seed.second).dot(planes[planes_it].normal)) < thresh_plane_belonging)
                 {
-                    all_neigh_with_non_coherent_normal = false;
+                    at_least_one_inlier = false;
                     break;
                 }
             }
-            if(!all_neigh_with_non_coherent_normal)
+            if(!at_least_one_inlier)
             {
                 for(int k = 0; k<neighbors.size(); ++k)
                 {
-                    if(!processed_growing(neighbors[k]->first.first, neighbors[k]->first.second)) //in order not to process twice one neighbor
+                    if(!processed_growing(neighbors[k]->first.first, neighbors[k]->first.second)) //in order not to process twice one pixel
                     {
-                        if(abs((neighbors[k]->second.first-it->second.first).dot(planes[planes_it].normal)) < thresh_plane_belonging)// && acos(neighbors[k]->second.dot(it->second)/(neighbors[k]->second.norm()*it->second.norm())) < thresh_angle )
-                        {
                             processed_growing(neighbors[k]->first.first, neighbors[k]->first.second) = true;
                             region.push_back(neighbors[k]);
 
-                            pcl::PointXYZ pt_clus;
-                            pt_clus.x = neighbors[k]->second.first(0);
-                            pt_clus.y = neighbors[k]->second.first(1);
-                            pt_clus.z = neighbors[k]->second.first(2);
-                            pc_clus.points.push_back(pt_clus);
-                        }
+//                            pcl::PointXYZ pt_clus;
+//                            pt_clus.x = neighbors[k]->second.first(0);
+//                            pt_clus.y = neighbors[k]->second.first(1);
+//                            pt_clus.z = neighbors[k]->second.first(2);
+//                            pc_clus.points.push_back(pt_clus);
                     }
                 }
             }
@@ -890,13 +1013,14 @@ void manager::searchClusters2(double thresh_plane_belonging) // create the objec
 
         if(region.size()>min_number_of_pixels)
         {
-            processed_seed = processed_seed || processed_growing;
             Eigen::Vector3d cluster_normal = planes[planes_it].normal;
-            double cluster_distance = abs(it->second.first.dot(planes[planes_it].normal));
+            double cluster_distance = abs(planes[planes_it].seed.second.dot(planes[planes_it].normal));
             cluster_normal /= cluster_normal.norm();
             cluster_normal *= cluster_distance;
             regions.push_back(std::make_pair(region, cluster_normal));
-            std::cout<<"New region number: "<< regions.size()-1 << std::endl<< "seed : "<<it->first.first<<" "<<it->first.second<<"-->"<<it->second.first.transpose()<<std::endl<<"normal : "<<it->second.second.transpose()<<std::endl<<"distance : "<<cluster_distance<<std::endl<<"number of points : "<<region.size()<<std::endl<<std::endl;
+
+            processed_seed = processed_seed || processed_growing;
+            std::cout<<"New region number: "<< regions.size()-1 << std::endl<< "seed : "<<planes[planes_it].seed.first.first<<" "<<planes[planes_it].seed.first.second<<"-->"<<planes[planes_it].seed.second.transpose()<<std::endl<<"normal : "<<planes[planes_it].normal.transpose()<<std::endl<<"distance : "<<cluster_distance<<std::endl<<"number of points : "<<region.size()<<std::endl<<std::endl;
 //            std::vector<Eigen::MatrixXi, Eigen::aligned_allocator<Eigen::MatrixXi>> test(3);
 //            test[0] = coeffWiseMulti(image_init[0], processed_seed.cast<int>());
 //            test[1] = coeffWiseMulti(image_init[1], processed_seed.cast<int>());
@@ -908,6 +1032,38 @@ void manager::searchClusters2(double thresh_plane_belonging) // create the objec
 //            pc_clus.height = 1;
 //            pc_clus.is_dense=false;
 //            pcl::io::savePCDFileASCII ("cloud_clus.pcd", pc_clus);
+
+//            system("bash pcd2csv.sh cloud_clus.pcd");
+//            getchar();
+//            getchar();
+//            getchar();
         }
+    }
+}
+
+
+void manager::detect_margin()
+{
+    if(lim_theta.first == -1)
+    {
+        int temp;
+        int min_theta = Ncol;
+        int max_theta = 0;
+        for (auto it_XY2PtN = XY2PtN.begin(); it_XY2PtN != XY2PtN.end(); ++it_XY2PtN)
+        {
+            if(it_XY2PtN->first.second<min_theta)
+                min_theta = it_XY2PtN->first.second;
+
+            temp = it_XY2PtN->first.first ;
+            while(it_XY2PtN->first.first == temp)
+                ++it_XY2PtN;
+            --it_XY2PtN;
+
+            if(it_XY2PtN->first.second>max_theta)
+                max_theta = it_XY2PtN->first.second;
+        }
+
+        std::cout<<"min_theta : "<<min_theta<<"   max_theta : "<<max_theta<<std::endl<<std::endl;
+        lim_theta = std::make_pair(min_theta, max_theta);
     }
 }

@@ -24,7 +24,7 @@ public:
 
     //----------------------------------------------------------------------------------------------------------------------------------------
 
-    void setImageClusterized(Eigen::MatrixXi p);
+    void setImageClusterized(Eigen::MatrixXi p, std::pair<int,int> lt);
     int getMaxCol(){return max_col;}
     void setMaxCol(int mc){max_col = mc;}
     Eigen::MatrixXi getBoundariesImage();
@@ -33,7 +33,7 @@ public:
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> getImBinarizedMorpho(){return image_morpho;}
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> getOtherImBinarized(){return image_other_bool;}
     void closure(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE);
-    void computeBoundaries(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE, int margin);
+    void computeBoundaries(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE);
     void binarize(int p);
     std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> getNeighbors(std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator it, int rad);
 
@@ -41,14 +41,16 @@ private:
     int max_col;
     int Nrow;
     int Ncol;
-    Eigen::MatrixXi image_clusterized; //(color = plane index)
-    Eigen::MatrixXi image_grad; //(color = plane index)
+    Eigen::MatrixXi image_clusterized; //(intensity = plane index)
+    Eigen::MatrixXi image_grad; //(intensity = plane index)
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_bool;
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_morpho;
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_other_bool;
     std::map<std::pair<int,int>, int> XY2planeIdx_boundary;
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> mynot(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_in);
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> morpho(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_in, Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE);
+    void detect_margin();
+    std::pair<int,int> lim_theta;
 };
 
 #include "manager2D.inl"

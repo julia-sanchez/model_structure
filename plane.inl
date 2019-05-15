@@ -1,5 +1,8 @@
 void plane::computeNormal()
 {
+    points.resize(pts.size(), 3);
+    for(int k = 0; k<pts.size(); ++k)
+        points.row(k) = pts[k];
     Eigen::MatrixXd centered_points (points.rows(), 3);
     Eigen::Vector3d mean_point = points.colwise().mean();
     centered_points = points - Eigen::VectorXd::Ones(points.rows())*(mean_point.transpose());
@@ -14,11 +17,65 @@ void plane::computeNormal()
 
 void plane::appendPoint(Eigen::Vector3d pt)
 {
-    points.conservativeResize(points.rows()+1, points.cols());
-    points.row(points.rows()-1) = pt;
+    pts.push_back(pt);
 }
 
 void plane::appendPixel(std::pair<int,int> p)
 {
-    pixels.insert(p);
+    pixels.push_back(p);
+}
+
+void plane::mean()
+{
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_to_sample (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_sampled (new pcl::PointCloud<pcl::PointXYZ>);
+    cloud_to_sample->width = pts.size();
+    cloud_to_sample->height = 1;
+    cloud_to_sample->points.resize(pts.size());
+    for(int i = 0; i<pts.size(); ++i)
+    {
+        cloud_to_sample->points[i].x = pts[i](0);
+        cloud_to_sample->points[i].y = pts[i](1);
+        cloud_to_sample->points[i].z = pts[i](2);
+    }
+    pcl::UniformSampling< pcl::PointXYZ > filter;
+    filter.setInputCloud(cloud_to_sample);
+    filter.setRadiusSearch(0.1);
+    filter.filter(*cloud_sampled);
+
+    std::vector<Eigen::Vector3d> sampled(cloud_sampled->size());
+
+    for(int i = 0; i<cloud_sampled->size(); ++i)
+    {
+        sampled[i](0) = cloud_sampled->points[i].x;
+        sampled[i](1) = cloud_sampled->points[i].y;
+        sampled[i](2) = cloud_sampled->points[i].z;
+    }
+
+    Eigen::Vector3d mean_point = Eigen::Vector3d::Zero();
+
+//    for(int i = 0; i<pts.size(); ++i)
+//        mean_point += pts[i];
+
+//    mean_point /= pts.size();
+
+    for(int i = 0; i<sampled.size(); ++i)
+        mean_point += sampled[i];
+
+    mean_point /= sampled.size();
+
+    int index = 0;
+    float temp = 100000000;
+
+    for(int i = 0; i<pts.size(); ++i)
+    {
+        if((pts[i]-mean_point).norm()<temp)
+        {
+            temp = (pts[i]-mean_point).norm();
+            index = i;
+        }
+    }
+
+    seed.first = pixels[index];
+    seed.second = pts[index];
 }

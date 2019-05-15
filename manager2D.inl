@@ -2,12 +2,13 @@ manager2D::manager2D()
 {
 }
 
-void manager2D::setImageClusterized(Eigen::MatrixXi p)
+void manager2D::setImageClusterized(Eigen::MatrixXi p, std::pair<int,int> lt)
 {
     image_clusterized = p;
     Nrow = image_clusterized.rows();
     Ncol = image_clusterized.cols();
     image_grad = Eigen::MatrixXi::Zero(Nrow, Ncol);
+    lim_theta = lt;
 }
 
 void manager2D::binarize(int p) // p is the index of the plane
@@ -81,14 +82,14 @@ void manager2D::closure(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE)
     image_morpho = image_morpho - (image_other_bool && image_morpho); // remove other walls
 }
 
-void manager2D::computeBoundaries(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE, int margin)
+void manager2D::computeBoundaries(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE)
 {
     int rad = (SE.rows()-1)/2;
 
     XY2planeIdx_boundary.clear();
     for (int i = rad; i<Nrow-rad; ++i)
     {
-        for (int j = margin+2; j<Ncol-(margin+2); ++j)
+        for (int j = lim_theta.first+2; j<=lim_theta.second-2; ++j)
         {
             if(image_bool(i,j))
             {

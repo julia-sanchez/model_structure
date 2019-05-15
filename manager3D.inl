@@ -110,6 +110,7 @@ void manager3D::createMap()
     pc_init.height = 1;
     pc_init.is_dense=false;
     pcl::io::savePCDFileASCII ("pc_init.pcd", pc_init);
+    system("bash pcd2csv.sh pc_init.pcd");
 
     std::cout<<"points not added to PhiTheta2PtN because already exists : "<<n<<std::endl<<std::endl;
 }
