@@ -20,8 +20,9 @@ const int min_number_of_pixels = 50;                                           /
 const int pixel_radius_for_growing = 3;                                        // in case of soft obstruction over all the length  of the plane OR if black pixels (no return of laser bim)
 const double normals_similarity_threshold_for_cleaning_when_one_cluster = 0.9;   // when one point belongs to one unique cluster if normal too different erase
 const double normals_similarity_threshold_to_select_seed = 0.99;                 // comparison of seed normal to neighbors normals (seed must be on a precise zone of a plane)
-const double normals_similarity_to_add_neighbors = 0.95;  // (when the region growing goes on another wall on a band) check the neighborhs normals to be sure not to go too far
+const double normals_similarity_to_add_neighbors = 0.9;  // (when the region growing goes on another wall on a band) check the neighborhs normals to be sure not to go too far
 const double parallel_dot_threshold = 0.9;
+const int incertainty_pixels = 6;
 
 class manager
 {
@@ -52,9 +53,11 @@ public:
     pcl::PointCloud<pcl::PointXYZ> extractBoundCloud();
     void extractBoundImage();
     void searchClusters2(double thresh_plane_belonging);
-    void computeConnections();
+    void computeLines();
+    void DefineIntersectionsPixPoints(int idx_plane);
     void computeTheoriticalPlanesIntersections();
     void setLimTheta(std::pair<int,int> lt){lim_theta = lt;}
+    std::multimap<std::pair<int,int>,std::pair<int,int>> neighborPix2currentPix;
 
 private:
     pcl::PointCloud<pcl::PointNormal>::Ptr cloud;
@@ -75,7 +78,7 @@ private:
     //we associate one mode plane to each point
     std::multimap<std::pair<int,int>, std::pair<int,int>> XY2Plane_idx; // to keep double values
     std::map<std::pair<int,int>, Eigen::Vector3d> XY2Plane_clusterized_clean; // to process points with various modes and associate one unique mode to them
-    std::vector<std::pair<std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator>, Eigen::Vector3d>> regions; // vector of (vector of iterators and plane)
+    std::vector<std::pair<std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator>, Eigen::Vector3d>> regions; // vector of ( (vector of iterators) , (plane))
     std::vector<Eigen::MatrixXi, Eigen::aligned_allocator<Eigen::MatrixXi>> image_clusterized;
     Eigen::MatrixXi image_clusterized_indices;
     std::vector<Eigen::MatrixXi, Eigen::aligned_allocator<Eigen::MatrixXi>> image_init;
@@ -84,6 +87,7 @@ private:
     std::vector<intersection> intersections;
     std::vector<std::vector<int>> edges;
     std::vector<intersection> all_edges;
+    std::vector<corner> possible_corners;
     std::vector<corner> corners;
     bool isSeed(std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator it, int radius, double thresh_neigh_for_seed);
     void quantifyPhiTheta();
@@ -92,12 +96,13 @@ private:
     manager3D man3D;
     manager2D man2D;
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed_planes;
-    void remove_intersection(int k);
+    void remove_intersection(int* k);
     intersection inter_remaining;
     std::vector<std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>> possible_inter3D;
     void computeTheoriticalLinesIntersections();
     std::pair<int,int> lim_theta;
     void detect_margin();
+    Eigen::MatrixXi all_boundaries_image;
 
 };
 

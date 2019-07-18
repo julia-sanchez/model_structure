@@ -36,6 +36,7 @@ class plane
         void mean();
         pcl::PointCloud<pcl::PointXYZ> cloud;
         std::vector<int> intersections_indices;
+        std::vector<int> corners_indices;
 
     private:
 };

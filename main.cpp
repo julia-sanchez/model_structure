@@ -11,7 +11,8 @@ int main(int argc, char *argv[])
 {
     if(argc != 10)
     {
-        std::cout<< "file_pcd radius_for_normals radius_for_density_filter Ncol Nrow max_color luz depth_map_type hokuyo_ou_autre"<<std::endl<<std::endl;
+        std::cout<< "file_pcd radius_for_normals Nrow Ncol phi_app theta_app max_col thresh_plane_belonging radius_for_seed thresh_neigh_for_seed lim_theta hokuyo_ou_autre"<<std::endl<<std::endl;
+        //                           0.15        1200 1200   360      180      500              0.15               5               0.03                0            0
         std::cout<< "on doit préciser si c'est hokuyo parce que le 0 n'est pas à l'origine du scanner (y)"<<std::endl<<std::endl;
     }
 
@@ -25,14 +26,15 @@ int main(int argc, char *argv[])
         PCL_ERROR ("Couldn't read file test_pcd.pcd \n");
     }
 
-    int hokuyo = atoi(argv[11]);
+    int hokuyo = atoi(argv[12]);
     std::cout<< "Pretransfrom to put sensor in (0,0)"<<std::endl;
     Eigen::Matrix4f rotation_transform = Eigen::Matrix4f::Identity();
-    Eigen::Vector3d axis = {0,0,1};
+    Eigen::Vector3d rot_axis = {0,0,1};
+    Eigen::Vector3d axis_init_phi = {1,0,0};
 
     if(hokuyo)
     {
-        axis = {0,1,0};
+        rot_axis = {0,1,0};
         std::cout<< "HOKUYO DETECTED"<<std::endl<<std::endl;
         rotation_transform (0,3) = 0.027;
         rotation_transform (1,3) = 0;
@@ -69,11 +71,22 @@ int main(int argc, char *argv[])
     double thresh_plane_belonging = atof(argv[8]);
     int radius_for_seed = atoi(argv[9]);
     double thresh_neigh_for_seed = atof(argv[10]);
+    std::pair<int,int> lim_theta;
+    if(atoi(argv[11])>epsilon)
+    {
+        lim_theta.first = atoi(argv[11]);
+        lim_theta.second = Ncol - atoi(argv[11]);
+    }
+    else
+    {
+        lim_theta.first = -1;
+        lim_theta.second = -1;
+    }
 
-    // FILTRE MORPHO POUR BOUCHER LES PIXELS NOIRS (SANS VALEUR)------------------------------------------------------------------------------------------------------------------------
-    manager man(cloud, Nrow, Ncol, phi_app, theta_app, max_col);
+    manager man(cloud, Nrow, Ncol, phi_app, theta_app, max_col, rot_axis, axis_init_phi);
+    man.setLimTheta(lim_theta);
     std::cout<< "Creating map"<<std::endl;
-    man.initSearchCluster(normal_radius, axis);
+    man.initSearchCluster(normal_radius);
     std::cout<<std::endl<< "Saving init"<<std::endl;
     man.init2Image();
     std::vector<Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic>, Eigen::aligned_allocator<Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic>>> init = man.getInitImage();
@@ -88,21 +101,15 @@ int main(int argc, char *argv[])
     man.cleanClusters();
     std::cout<<std::endl<< "Stop cleaning clusters"<<std::endl<<std::endl;
 
-    //do it twice with the updated normal to be sure one piece of plane is not avoided because of the high length of the plane and the uncertainty of the normal
+    //do it a second time with the updated normal and a new seed to be sure one piece of plane is not avoided because of the high length of the plane and the uncertainty of the normal
 
 //    std::cout<<std::endl<< "Research clusters"<<std::endl;
-//    man.searchClusters2(0.06);
+//    man.searchClusters2(0.03);
 //    std::cout<<std::endl<< "Stop researching clusters"<<std::endl<<std::endl;
 
 //    std::cout<<std::endl<< "Start recleaning clusters"<<std::endl;
 //    man.cleanClusters();
 //    std::cout<<std::endl<< "Stop recleaning clusters"<<std::endl<<std::endl;
-
-    //save and display initial image
-//    std::cout<<std::endl<< "Saving init"<<std::endl;
-//    man.init2Image();
-//    std::vector<Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic>, Eigen::aligned_allocator<Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic>>> init = man.getInitImage();
-//    save_image_ppm("init", "", init, max_col);
 
     //save and display clusterized image
     std::cout<<std::endl<< "Saving clusterized"<<std::endl;
@@ -114,7 +121,4 @@ int main(int argc, char *argv[])
 
     std::cout<<std::endl<< "Extract boundaries"<<std::endl;
     man.extractBoundImage();
-//    Eigen::Vector3f normal = {1,0,0};
-//    man.loadBoundary(("results/cloud_boundary_5.pcd"), normal);
-//    man.searchLinesInBoundary(error_angle, error_distance);
 }

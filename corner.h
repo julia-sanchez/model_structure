@@ -14,6 +14,7 @@ class corner
 {
     public:
         corner(){planes.resize(3); lines.resize(2);}
+        int index;
         std::vector<plane*> planes;
         std::vector<intersection*> lines;
         bool isPlaneIntersection;
@@ -23,7 +24,8 @@ class corner
         void computePointFromLines(int plane_idx);
         void setPlanes(plane* p1, plane* p2, plane* p3);
         void setLines(intersection* l1, intersection* l2);
-        std::vector<int> corners_connected;
+        std::set<int> planes_indices;
+        std::set<int> lines_indices;
 
     private:
 

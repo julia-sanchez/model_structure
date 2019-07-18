@@ -27,6 +27,7 @@ void plane::appendPixel(std::pair<int,int> p)
 
 void plane::mean()
 {
+    //filter points to compute the mean independently from the sampling
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_to_sample (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_sampled (new pcl::PointCloud<pcl::PointXYZ>);
     cloud_to_sample->width = pts.size();
@@ -54,15 +55,12 @@ void plane::mean()
 
     Eigen::Vector3d mean_point = Eigen::Vector3d::Zero();
 
-//    for(int i = 0; i<pts.size(); ++i)
-//        mean_point += pts[i];
-
-//    mean_point /= pts.size();
-
     for(int i = 0; i<sampled.size(); ++i)
         mean_point += sampled[i];
 
     mean_point /= sampled.size();
+
+    //take the point the closest from the mean as the new seed
 
     int index = 0;
     float temp = 100000000;

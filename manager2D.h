@@ -33,9 +33,12 @@ public:
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> getImBinarizedMorpho(){return image_morpho;}
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> getOtherImBinarized(){return image_other_bool;}
     void closure(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE);
-    void computeBoundaries(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE);
+    void computeBoundaries(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE, Eigen::MatrixXi all_boundaries);
     void binarize(int p);
     std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> getNeighbors(std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator it, int rad);
+    int image_clusterized_idx;
+    std::multimap<std::pair<int,int>,std::pair<int,int>> neighborPix2currentPix;
+    std::multimap<std::pair<int,int>,std::pair<int,int>> getNeighborPix2currentPix(){return neighborPix2currentPix;};
 
 private:
     int max_col;
@@ -51,6 +54,7 @@ private:
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> morpho(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_in, Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> SE);
     void detect_margin();
     std::pair<int,int> lim_theta;
+    std::multimap<std::pair<int,int>,std::pair<int,int>> reference;
 };
 
 #include "manager2D.inl"

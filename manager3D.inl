@@ -99,10 +99,11 @@ void manager3D::createMap()
 
         if(theta>theta_margin && theta <M_PI-theta_margin) // take theta from 5 degrees because accuracy is insufficient before
         {
-            pc_init.points.push_back(cloud->points[i]);
             auto idx_is_inserted = planes.insert(std::make_pair(std::make_pair(phi, theta), std::make_pair(pt,normal)));
             if(idx_is_inserted.second == false)
                 ++n;
+            else
+                pc_init.points.push_back(cloud->points[i]);
         }
     }
 
@@ -112,5 +113,5 @@ void manager3D::createMap()
     pcl::io::savePCDFileASCII ("pc_init.pcd", pc_init);
     system("bash pcd2csv.sh pc_init.pcd");
 
-    std::cout<<"points not added to PhiTheta2PtN because already exists : "<<n<<std::endl<<std::endl;
+    std::cout<<"number of points not added to PhiTheta2PtN because already exist : "<<n<<std::endl<<std::endl;
 }
