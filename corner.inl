@@ -8,24 +8,41 @@ void corner::computePointFromPlanes()
     pt = N.colPivHouseholderQr().solve(d);
 }
 
-void corner::computePointFromLines(int plane_idx)
+void corner::computePointFromLines()
 {
     plane* p;
-    if(lines[0]->plane_ref->index == plane_idx)
+    if(!lines[0]->isConnection)
         p = lines[0]->plane_ref;
     else
-        p = lines[0]->plane_neigh;
-    lines[0]->ProjectLineFeaturesOnPlane(p);
-    lines[1]->ProjectLineFeaturesOnPlane(p);
+        p = lines[1]->plane_ref;
+
+    //define features of lines in 2D
+    Eigen::Affine3d rot = Eigen::Affine3d::Identity();
+    Eigen::Affine3d rot_inv = Eigen::Affine3d::Identity();
+
+    float angle = acos(-p->normal(2));   //angle between normal and z axis [0, pi]
+    Eigen::Vector3d axis;
+    if(angle>eps)
+    {
+        axis = (-p->normal).cross(Eigen::Vector3d(0,0,1)); // rotation axis to align normal onto z axis
+        axis /= axis.norm();
+        rot.rotate( Eigen::AngleAxisd(angle, axis) );
+        rot_inv.rotate( Eigen::AngleAxisd(-angle, axis) );
+    }
+
+    lines[0]->rot = rot;
+    lines[1]->rot = rot;
+    lines[0]->ProjectLineFeaturesOnPlane();
+    lines[1]->ProjectLineFeaturesOnPlane();
 
     Eigen::Matrix2d N ;
-    N.row(0) =lines[0]->normal2D;
+    N.row(0) = lines[0]->normal2D;
     N.row(1) = lines[1]->normal2D;
     Eigen::Vector2d d = {lines[0]->distance2D, lines[1]->distance2D};
     Eigen::Vector2d pt_intersect2D = N.colPivHouseholderQr().solve(d);
 
-    Eigen::Vector3d pt_intersect3D = {pt_intersect2D(0), pt_intersect2D(1), 0};
-    pt = lines[0]->rot_inv.linear() * lines[0]->trans_z_inv*pt_intersect3D;
+    Eigen::Vector3d pt_intersect3D = {pt_intersect2D(0), pt_intersect2D(1), p->distance};
+    pt = rot_inv.linear() *  pt_intersect3D;
 }
 
 void corner::setPlanes(plane* p1, plane* p2, plane* p3)

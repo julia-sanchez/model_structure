@@ -21,7 +21,7 @@ const int pixel_radius_for_growing = 3;                                        /
 const double normals_similarity_threshold_for_cleaning_when_one_cluster = 0.9;   // when one point belongs to one unique cluster if normal too different erase
 const double normals_similarity_threshold_to_select_seed = 0.99;                 // comparison of seed normal to neighbors normals (seed must be on a precise zone of a plane)
 const double normals_similarity_to_add_neighbors = 0.9;  // (when the region growing goes on another wall on a band) check the neighborhs normals to be sure not to go too far
-const double parallel_dot_threshold = 0.9;
+const double parallel_dot_threshold = 0.98;
 const int incertainty_pixels = 6;
 
 class manager
@@ -58,6 +58,7 @@ public:
     void computeTheoriticalPlanesIntersections();
     void setLimTheta(std::pair<int,int> lt){lim_theta = lt;}
     std::multimap<std::pair<int,int>,std::pair<int,int>> neighborPix2currentPix;
+    void computeParallelLinesIntersections();
 
 private:
     pcl::PointCloud<pcl::PointNormal>::Ptr cloud;
@@ -85,7 +86,7 @@ private:
     std::map<std::pair<int,int>, int> boundary;
     std::vector<plane> planes;
     std::vector<intersection> intersections;
-    std::vector<std::vector<int>> edges;
+    std::vector<std::set<int>> edges;
     std::vector<intersection> all_edges;
     std::vector<corner> possible_corners;
     std::vector<corner> corners;
@@ -103,6 +104,8 @@ private:
     std::pair<int,int> lim_theta;
     void detect_margin();
     Eigen::MatrixXi all_boundaries_image;
+    bool replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vector3d potential_corner_pt);
+    bool replaceLim3(intersection& inter1, intersection& inter2, intersection& inter3, Eigen::Vector3d potential_corner_pt);
 
 };
 
