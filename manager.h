@@ -23,6 +23,7 @@ const double normals_similarity_threshold_to_select_seed = 0.99;                
 const double normals_similarity_to_add_neighbors = 0.9;  // (when the region growing goes on another wall on a band) check the neighborhs normals to be sure not to go too far
 const double parallel_dot_threshold = 0.98;
 const int incertainty_pixels = 6;
+const double min_dist_planes =0.1; //min distance between two parallel planes (if closer gathering)
 
 class manager
 {
@@ -33,6 +34,7 @@ public:
         inter_remaining.isObstruction = true;
         lim_theta.first = -1;
         lim_theta.second = -1;
+        seeds_pixels = Eigen::MatrixXi::Zero(Nrow, Ncol);
     }
     manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int Nc, double pa, double ta, int mc, Eigen::Vector3d ra, Eigen::Vector3d aip);
 
@@ -59,6 +61,7 @@ public:
     void setLimTheta(std::pair<int,int> lt){lim_theta = lt;}
     std::multimap<std::pair<int,int>,std::pair<int,int>> neighborPix2currentPix;
     void computeParallelLinesIntersections();
+    Eigen::MatrixXi seeds_pixels;
 
 private:
     pcl::PointCloud<pcl::PointNormal>::Ptr cloud;

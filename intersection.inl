@@ -832,66 +832,17 @@ void intersection::computeTheoriticalLineFeaturesConnection()
     float distance2 = plane_ref->distance;
     tangente = normal1.cross(normal2);
     tangente /= tangente.norm();
-    Eigen::Vector3d axis_x = {1,0,0};
-    Eigen::Vector3d axis_y = {0,1,0};
-
-    double thresh_to_define_axis = 0.6;
     Eigen::Vector3d pt = Eigen::Vector3d::Zero();
 
-    if(abs(normal1.dot(axis_x))<thresh_to_define_axis && abs(normal2.dot(axis_x))<thresh_to_define_axis)
-    {
-        //as we will divide by normal1(2), we have to check it is not null to keep accuracy
-        if(abs(normal1(2))<1e-3)
-        {
-            normal1 = -plane_ref->normal;
-            normal2 = -plane_neigh->normal;
-            distance1 = plane_ref->distance;
-            distance2 = plane_neigh->distance;
-        }
-        pt(0) = 0; // we fix one element of the point
-        float denom = normal2(1)-(normal2(2) * normal1(1)/normal1(2));
-        float num = distance2-pt(0)*normal2(0) + (pt(0)*normal1(0)-distance1)*(normal2(2)/normal1(2));
-        pt(1) = num/denom;
-        pt(2) = (distance1-normal1(0)*pt(0)-pt(1)*normal1(1))/normal1(2);
-    }
-    else if (abs(normal1.dot(axis_y))<thresh_to_define_axis && abs(normal2.dot(axis_y))<thresh_to_define_axis)
-    {
-        //as we will divide by normal1(2), we have to check it is not null to keep accuracy
-        if(abs(normal1(2))<1e-3)
-        {
-            normal1 = -plane_ref->normal;
-            normal2 = -plane_neigh->normal;
-            distance1 = plane_ref->distance;
-            distance2 = plane_neigh->distance;
-        }
-        pt(1) = 0; // we fix one element of the point
-        float denom = normal2(0)-(normal2(2)*normal1(0)/normal1(2));
-        float num = distance2-pt(1)*normal2(1) + (pt(1)*normal1(1)-distance1)*(normal2(2)/normal1(2));
-        pt(0) = num/denom;
-        pt(2) = (distance1-normal1(1)*pt(1)-pt(0)*normal1(0))/normal1(2);
-    }
-    else
-    {
-        //as we will divide by normal1(1), we have to check it is not null to keep accuracy
-        if(abs(normal1(1))<1e-3)
-        {
-            normal1 = -plane_ref->normal;
-            normal2 = -plane_neigh->normal;
-            distance1 = plane_ref->distance;
-            distance2 = plane_neigh->distance;
-        }
-        pt(2) = 0; // we fix one element of the point
-        float denom = normal2(0)-(normal2(1) * normal1(0)/normal1(1));
-        float num = distance2-pt(2)*normal2(2) + (pt(2)*normal1(2)-distance1)*(normal2(1)/normal1(1));
-        pt(0) = num/denom;
-        pt(1) = (distance1-normal1(2)*pt(2)-pt(0)*normal1(0))/normal1(1);
-    }
+    Eigen::Matrix3d A ;
+    A.row(0) = normal1;
+    A.row(1) = normal2;
+    A.row(2) = tangente;
+    Eigen::Vector3d d = {distance1, distance2, 0};
+    pt = A.colPivHouseholderQr().solve(d);
 
-    normal = pt-tangente.dot(pt)*tangente;
-    normal /= normal.norm();
-    if(pt.dot(normal)<0)
-        normal *= -1;
-    distance = abs(pt.dot(normal));
+    normal = pt / pt.norm();
+    distance = pt.norm();
     pt_mean = pt;
 
     std::cout<<"connection tangente : "<<tangente.transpose()<<std::endl<<std::endl;
@@ -1284,7 +1235,6 @@ void intersection::computeTheoriticalPhiTheta()
     }
 
     // Fix theta and compute phi
-    float alpha = atan2(normal1(1)-D*normal2(1),normal1(0)-D*normal2(0));
     for(int j = 0; j<Ncol; ++j)
     {
         float theta = j*delta_theta + delta_theta/2;
@@ -1300,6 +1250,7 @@ void intersection::computeTheoriticalPhiTheta()
         float R = sqrt(a*a + b*b);
         if(abs(c/R)<1)
         {
+            float alpha = atan2(b/R, a/R);
             float phi = acos(c/R)+alpha;
             Eigen::Vector3d pt_norm = {cos(phi)*sin(theta), sin(phi)*sin(theta), cos(theta)};
             float distance1 = plane_ref->distance/normal1.dot(pt_norm);
@@ -2015,7 +1966,7 @@ void intersection::correctObstructions(intersection& sister)
     Eigen::Vector3d pt_mean_sister_proj = ( plane_ref->distance/(sister.pt_mean.dot(normal_plane_ref)) ) * sister.pt_mean;
     Eigen::Vector3d pt_mean_self_proj = ( plane_neigh->distance/(     pt_mean.dot(normal_plane_neigh)) ) * pt_mean;
 
-    //compute mean point + tangente projection on each plane
+    //compute (mean point + tangente) projection on each plane
     Eigen::Vector3d pt_mean_and_tangente_sister_proj = ( plane_ref->distance/( (sister.pt_mean+sister.tangente).dot(normal_plane_ref)) ) * ( sister.pt_mean+sister.tangente );
     Eigen::Vector3d pt_mean_and_tangente_self_proj = ( plane_neigh->distance/( (pt_mean + tangente).dot(normal_plane_neigh)) ) * ( pt_mean + tangente );
 

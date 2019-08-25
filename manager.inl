@@ -21,6 +21,7 @@ manager::manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int 
     lim_theta.second = -1;
     rot_axis = ra;
     axis_init_phi = aip;
+    seeds_pixels = Eigen::MatrixXi::Zero(Nrow, Ncol);
 }
 
 std::pair<int,int> pt2XY(Eigen::Vector3d pt, float delta_phi, float delta_theta, Eigen::Vector3d rot_axis, Eigen::Vector3d axis_init_phi)
@@ -138,19 +139,30 @@ bool manager::isSeed(std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eig
 {
     //les voisins sont choisis sur l'image donc ils peuvent etre trèès proches en points 3D
     std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> neigh = getNeighbors(it, radius);
-    Eigen::Vector3d mean_pt;
-    mean_pt = it->second.first;
 
     for(int i = 0; i< neigh.size(); ++i)
     {
-        double dist_neigh = abs(neigh[i]->second.first.dot(neigh[i]->second.second));
-        double dist = abs(mean_pt.dot(it->second.second));
-        if( abs(dist- dist_neigh) > thresh_neigh_for_seed)
+        double dist = abs((it->second.first-neigh[i]->second.first).dot(it->second.second));
+        if( dist > thresh_neigh_for_seed || abs(neigh[i]->second.second.dot(it->second.second))<normals_similarity_threshold_to_select_seed)
             return false;
-//        double dist = abs((mean_pt-neigh[i]->second.first).dot(it->second.second));
-//        if( dist > thresh_neigh_for_seed || abs(neigh[i]->second.second.dot(it->second.second))<normals_similarity_threshold_to_select_seed)
-//            return false;
     }
+
+    //-------------------
+    Eigen::Vector3d mean_pt = Eigen::Vector3d::Zero();
+    for(int i = 0; i <neigh.size(); ++i)
+        mean_pt += neigh[i]->second.first;
+
+    mean_pt /= neigh.size();
+    it->second.first = mean_pt;
+
+    Eigen::Vector3d mean_norm = Eigen::Vector3d::Zero();
+    for(int i = 0; i <neigh.size(); ++i)
+        mean_norm += neigh[i]->second.second;
+
+    mean_norm /= neigh.size();
+    mean_norm /= mean_norm.norm();
+    it->second.second= mean_norm;
+    //-------------------
     return true;
 }
 
@@ -168,6 +180,7 @@ void manager::searchClusters(double thresh_plane_belonging, int radius, double t
             pc_clus.points.resize(0);
             if(isSeed(it, radius, thresh_neigh_for_seed))
             {
+                seeds_pixels(it->first.first, it->first.second) = 1;
                 processed_growing = Eigen::MatrixXi::Zero(Nrow, Ncol).cast<bool>();
                 std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator> region; // vector of iterator
                 region.push_back(it);
@@ -257,7 +270,7 @@ void manager::cleanClusters() // from regions, keep all points in XY2Plane_idx a
     int n =0;
     planes.clear();
     planes.resize(regions.size());
-    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> share_points(planes.size(),planes.size());
+    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> share_points =  Eigen::MatrixXi::Zero(planes.size(),planes.size()).cast<bool>();
     std::pair<std::pair<int,int>, std::pair<int,int>> inserted;
     for(auto it_XY2Plane_idx = XY2Plane_idx.begin(); it_XY2Plane_idx!=XY2Plane_idx.end(); ++it_XY2Plane_idx) // for each cluster
     {
@@ -349,7 +362,7 @@ void manager::cleanClusters() // from regions, keep all points in XY2Plane_idx a
     {
         for(int j = i+1; j<planes.size(); ++j)
         {
-            if(acos(planes[i].normal.dot(planes[j].normal))<5*M_PI/180 && abs(planes[i].distance-planes[j].distance)<0.1 && share_points(i,j)) // if planes similar...
+            if(acos(abs(planes[i].normal.dot(planes[j].normal)))<5*M_PI/180 && abs(planes[i].distance-planes[j].distance)<min_dist_planes && share_points(i,j)) // if planes similar...
             {
                 for(int k = 0; k< planes[j].pts.size(); ++k)
                 {
@@ -794,13 +807,13 @@ void manager::extractBoundImage()
     {
         if(all_edges[k].isLine)
         {
-            if(all_edges[k].isConnected)
+            if(all_edges[k].isConnected) // start or end has changed
             {
                 double eps = 0.0001;
                 bool start_changed = (all_edges[k].start_pt - all_edges[k].new_start_pt).norm()>eps;
                 bool end_changed = (all_edges[k].end_pt - all_edges[k].new_end_pt).norm()>eps;
                 bool shared_corner = false;
-                if(!start_changed || !end_changed)
+                if(!start_changed || !end_changed && !(!start_changed && !end_changed)) //start or end has not changed
                 {
                     Eigen::Vector3d uniq_connexion;
                     if(start_changed && !end_changed)
@@ -821,12 +834,12 @@ void manager::extractBoundImage()
                     if(shared_corner)
                         all_edges_temp.push_back(all_edges[k]);
                 }
-                else if( start_changed && end_changed )
+                else if( start_changed && end_changed ) // start and end have changed
                     all_edges_temp.push_back(all_edges[k]);
             }
-            else
-                all_edges_temp.push_back(all_edges[k]);
         }
+        else
+            all_edges_temp.push_back(all_edges[k]);
     }
     all_edges = all_edges_temp;
 
@@ -851,8 +864,6 @@ void manager::extractBoundImage()
             {
                 if( (all_edges[k].new_start_pt -possible_corners[it_corners].pt).norm() < eps || (all_edges[k].new_end_pt -possible_corners[it_corners].pt).norm() < eps)
                 {
-                    if((possible_corners[it_corners].pt - Eigen::Vector3d(2.8556,-0.226753,-1.33016)).norm()<0.001)
-                        std::cout<<"corner added with edge n°"<<k<<std::endl;
                     corners.push_back(possible_corners[it_corners]);
                     break;
                 }
