@@ -299,14 +299,17 @@ void intersection::computeTheoriticalLineFeaturesObstruction(std::multimap<std::
     repeated = repeated_temp;
     not_repeated = not_repeated_temp;
 
-    std::cout<<"number of points : "<<points.size()<<std::endl;
-    std::cout<<"number of other_points : "<<other_points.size()<<std::endl;
+    std::cout<<"ref plane of obstruction : points number of line : "<<indices_line_ref.size()<<std::endl<<std::endl;
+
+    std::cout<<"number total of points : "<<points.size()<<std::endl;
+    std::cout<<"number total of other_points : "<<other_points.size()<<std::endl<<std::endl;
+
     std::cout<<"obstruction tangente : "<<tangente.transpose()<<std::endl;
-    std::cout<<"obstruction normal : "<<normal.transpose()<<std::endl;
+    std::cout<<"obstruction pt_mean : "<<pt_mean.transpose()<<std::endl;
     std::cout<<"obstruction distance : "<<distance<<std::endl<<std::endl;
 
     std::cout<<"obstruction sister tangente : "<<tangente_sister.transpose()<<std::endl;
-    std::cout<<"obstruction sister normal : "<<normal_sister.transpose()<<std::endl;
+    std::cout<<"obstruction sister pt_mean : "<<pt_mean_sister.transpose()<<std::endl;
     std::cout<<"obstruction sister distance : "<<distance_sister<<std::endl<<std::endl;
 }
 
@@ -857,7 +860,6 @@ void intersection::definePlaneConnection()
     isOpening = false;
     float connect = 0.0;
     int rad = 2;
-    int nbr_pts = pixels.size();
     std::set<int> to_erase;
     other_points.clear();
     other_pixels.clear();
@@ -896,16 +898,13 @@ void intersection::definePlaneConnection()
     }
 
     std::cout<<"Number of pixels which contain the real intersection : "<<indices_of_line.size()<<std::endl;
-
-    connect = connect/(float)(nbr_pts);
-
     std::cout<<"percentage of pixels which contain the theoritical intersection : "<<connect*100<<"%"<<std::endl<<std::endl;
 
     isConnection = false;
     isObstruction = false;
     isOpening = false;
     isObject = false;
-    if( connect > perc_pixels_belonging_to_theoretical) // if more than 0.1 the quantity of pixels of the intersection correspond to a theoretical connection
+    if( connect > 3 )//perc_pixels_belonging_to_theoretical) // if more than 0.1 the quantity of pixels of the intersection correspond to a theoretical connection
     {
         std::cout<<"Erase pixels not belonging to theoretical lines from pixels"<<std::endl<<std::endl;
         //erase points not found in real connection (may be obstructions from the same neighbor plane (example : door -> one connection + various obstructions))
@@ -1601,6 +1600,7 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
         Eigen::Vector2d pt2D_mean;
 
         int n;
+        std::cout<<"Starting least square : "<<std::endl<<std::endl;
         for(int k =0; k<nbr_iterations; ++k)
         {
             n = 0;
@@ -1612,7 +1612,6 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
 
             if(n>2)
             {
-                std::cout<<"Starting least square : "<<std::endl<<std::endl;
                 JTJ.setZero();
                 JTr.setZero();
                 n = 0;
@@ -1659,10 +1658,10 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
 
                 has_points_after_ls = true;
 
-                std::cout<< "number of points : "<<n<<std::endl;
-                std::cout<< "normal : "<<normal2D.transpose()<<std::endl;
-                std::cout<< "distance 2D : "<<distance2D<<std::endl;
-                std::cout<<  "theta = "<<theta<<std::endl<<std::endl;
+//                std::cout<< "number of points : "<<n<<std::endl;
+//                std::cout<< "normal : "<<normal2D.transpose()<<std::endl;
+//                std::cout<< "distance 2D : "<<distance2D<<std::endl;
+//                std::cout<<  "theta = "<<theta<<std::endl<<std::endl;
             }
             else
             {

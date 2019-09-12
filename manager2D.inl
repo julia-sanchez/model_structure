@@ -64,16 +64,15 @@ Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> manager2D::mynot(Eigen::Matr
 
 void manager2D::morpho(int rad)
 {
-    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_dilated = dilate(image_bool, rad, true); // dilate
+    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_dilated = dilate(image_bool, rad); // dilate
     image_morpho = (image_dilated - (image_other_bool && image_dilated)).cast<int>();
-    segmentBiggest();
+//    segmentBiggest();
 }
 
-Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> manager2D::dilate(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_in, int rad, bool must_reference)
+Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> manager2D::dilate(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_in, int rad)
 {
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_out = image_in;
-    if(must_reference)
-        reference.clear();
+    reference.clear();
     //upper part
     for (int j = lim_theta.first+rad; j< lim_theta.second-rad; ++j)
     {
@@ -93,8 +92,7 @@ Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> manager2D::dilate(Eigen::Mat
                         if(!image_in(ki,kj))
                         {
                             image_out(ki,kj) = true;
-                            if(must_reference)
-                                reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
+                            reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
                         }
                     }
                 }
@@ -111,8 +109,7 @@ Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> manager2D::dilate(Eigen::Mat
                         if(!image_in(ki,kj))
                         {
                             image_out(ki,kj) = true;
-                            if(must_reference)
-                                reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
+                            reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
                         }
                     }
                 }
@@ -140,8 +137,7 @@ Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> manager2D::dilate(Eigen::Mat
                         if(!image_in(ki,kj))
                         {
                             image_out(ki,kj) = true;
-                            if(must_reference)
-                                reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
+                            reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
                         }
                     }
                 }
@@ -158,8 +154,7 @@ Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> manager2D::dilate(Eigen::Mat
                         if(!image_in(ki,kj))
                         {
                             image_out(ki,kj) = true;
-                            if(must_reference)
-                                reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
+                            reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
                         }
                     }
                 }
@@ -187,8 +182,7 @@ Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> manager2D::dilate(Eigen::Mat
                         if(!image_in(ki,kj))
                         {
                             image_out(ki,kj) = true;
-                            if(must_reference)
-                                reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
+                            reference.insert( std::make_pair(std::make_pair(ki,kj) , std::make_pair(i,j)) );
                         }
                     }
                 }
@@ -630,7 +624,6 @@ Eigen::MatrixXi manager2D::getBoundariesImage()
     {
         for (auto it_XY2planeIdx_boundary = XY2planeIdx_boundary.begin(); it_XY2planeIdx_boundary != XY2planeIdx_boundary.end(); ++it_XY2planeIdx_boundary )
             image_grad(it_XY2planeIdx_boundary->first.first, it_XY2planeIdx_boundary->first.second) = it_XY2planeIdx_boundary->second;
-        image_grad = max_col * image_grad/image_grad.maxCoeff();
     }
     return image_grad;
 }

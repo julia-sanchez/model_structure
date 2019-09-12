@@ -119,29 +119,29 @@ int main(int argc, char *argv[])
     Eigen::MatrixXi clusterized_indices = man.getClusterizedIndicesImage();
     save_image_pgm("clusterized_indices", "", clusterized_indices, clusterized_indices.maxCoeff());
 
-    std::vector<Eigen::MatrixXi, Eigen::aligned_allocator<Eigen::MatrixXi>> clusterized_with_seeds(3);
-    for(int i = 0; i<3; ++i )
-        clusterized_with_seeds[i] = Eigen::MatrixXi::Zero(Nrow, Ncol);
+//    std::vector<Eigen::MatrixXi, Eigen::aligned_allocator<Eigen::MatrixXi>> clusterized_with_seeds(3);
+//    for(int i = 0; i<3; ++i )
+//        clusterized_with_seeds[i] = Eigen::MatrixXi::Zero(Nrow, Ncol);
 
-    for(int i = 0; i < Nrow; ++i)
-    {
-        for(int j = 0; j < Ncol; ++j)
-        {
-            if(man.seeds_pixels(i,j))
-            {
-                clusterized_with_seeds[0](i,j) = max_col;
-                clusterized_with_seeds[1](i,j) = max_col;
-                clusterized_with_seeds[2](i,j) = max_col;
-            }
-            else
-            {
-                clusterized_with_seeds[0](i,j) = clusterized[0](i,j);
-                clusterized_with_seeds[1](i,j) = clusterized[1](i,j);
-                clusterized_with_seeds[2](i,j) = clusterized[2](i,j);
-            }
-        }
-    }
-    save_image_ppm("seeds", "", clusterized_with_seeds, max_col);
+//    for(int i = 0; i < Nrow; ++i)
+//    {
+//        for(int j = 0; j < Ncol; ++j)
+//        {
+//            if(man.seeds_pixels(i,j))
+//            {
+//                clusterized_with_seeds[0](i,j) = max_col;
+//                clusterized_with_seeds[1](i,j) = max_col;
+//                clusterized_with_seeds[2](i,j) = max_col;
+//            }
+//            else
+//            {
+//                clusterized_with_seeds[0](i,j) = clusterized[0](i,j);
+//                clusterized_with_seeds[1](i,j) = clusterized[1](i,j);
+//                clusterized_with_seeds[2](i,j) = clusterized[2](i,j);
+//            }
+//        }
+//    }
+//    save_image_ppm("seeds", "", clusterized_with_seeds, max_col);
 
     std::cout<<std::endl<< "Extract boundaries"<<std::endl;
     man.extractBoundImage();

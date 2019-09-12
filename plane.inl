@@ -4,14 +4,14 @@ void plane::computeNormal()
     for(int k = 0; k<pts.size(); ++k)
         points.row(k) = pts[k];
     Eigen::MatrixXd centered_points (points.rows(), 3);
-    Eigen::Vector3d mean_point = points.colwise().mean();
-    centered_points = points - Eigen::VectorXd::Ones(points.rows())*(mean_point.transpose());
+    mean_point_ = points.colwise().mean();
+    centered_points = points - Eigen::VectorXd::Ones(points.rows())*(mean_point_.transpose());
     Eigen::Matrix3d covariance = centered_points.transpose()*centered_points/points.rows();
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> es(covariance);
     normal = es.eigenvectors().col(0);
-    if(normal.dot(mean_point)>0)
+    if(normal.dot(mean_point_)>0)
         normal *= -1;
-    distance = abs(normal.dot(mean_point));
+    distance = abs(normal.dot(mean_point_));
 }
 
 

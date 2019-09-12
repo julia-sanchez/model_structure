@@ -17,11 +17,12 @@
 #include "manager2D.h"
 
 const int min_number_of_pixels = 50;                                           // min number of pixel for a cluster to represent a plane
-const int pixel_radius_for_growing = 3;                                        // in case of soft obstruction over all the length  of the plane OR if black pixels (no return of laser bim)
+const int pixel_radius_for_growing = 2;                                        // in case of soft obstruction over all the length  of the plane OR if black pixels (no return of laser bim)
 const double normals_similarity_threshold_for_cleaning_when_one_cluster = 0.9;   // when one point belongs to one unique cluster if normal too different erase
 const double normals_similarity_threshold_to_select_seed = 0.99;                 // comparison of seed normal to neighbors normals (seed must be on a precise zone of a plane)
 const double normals_similarity_to_add_neighbors = 0.9;  // (when the region growing goes on another wall on a band) check the neighborhs normals to be sure not to go too far
-const double parallel_dot_threshold = 0.98;
+const double not_parallel_dot_threshold = 0.9961;
+const double angle_parallel_threshold = 15;
 const int incertainty_pixels = 6;
 const double min_dist_planes =0.1; //min distance between two parallel planes (if closer gathering)
 
@@ -62,6 +63,8 @@ public:
     std::multimap<std::pair<int,int>,std::pair<int,int>> neighborPix2currentPix;
     void computeParallelLinesIntersections();
     Eigen::MatrixXi seeds_pixels;
+    void order_polygone_corners();
+    void export_mesh();
 
 private:
     pcl::PointCloud<pcl::PointNormal>::Ptr cloud;
@@ -109,6 +112,11 @@ private:
     Eigen::MatrixXi all_boundaries_image;
     bool replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vector3d potential_corner_pt);
     bool replaceLim3(intersection& inter1, intersection& inter2, intersection& inter3, Eigen::Vector3d potential_corner_pt);
+    void fill_edges();
+    bool arePlanesClose(plane pi, plane pj);
+    void actualizeChanged();
+    bool cross(std::vector<Eigen::Vector3d> jonction, std::vector<Eigen::Vector3d> poly, Eigen::Vector3d normal);
+    bool isLineConnectedInPlane(int idx_line, int idx_plane, int end);
 
 };
 

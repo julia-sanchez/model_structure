@@ -20,8 +20,8 @@ const int min_number_pixels = 4;
 const double min_line_length = 0.03;
 const double perc_pixels_belonging_to_theoretical = 0.1;
 const double line_margin = 0.01;
-const int max_dist_between_pixels_in_line = 5;
-const float max_dist_between_points_in_line = 0.1;
+const int max_dist_between_pixels_in_line = 10;
+const float max_dist_between_points_in_line = 0.15;
 const float max_spat_dist_for_line_connection = 0.15;
 const float max_pix_dist_for_line_connection = 10;
 
@@ -36,7 +36,7 @@ class intersection
             isObstruction = false;
             isObject = false;
             isOpening = false;
-            isLine = true;
+            isLine = false;
             Nrow = (int)((2*M_PI+2*eps)/delta_phi);
             Ncol = (int)((M_PI+2*eps)/delta_theta);
             theoreticalLim.resize(0);
@@ -48,7 +48,8 @@ class intersection
             has_points_after_ls = false;
             new_start_pt = Eigen::Vector3d::Zero();
             new_end_pt = Eigen::Vector3d::Zero();
-            isConnected = false;
+            start_changed = false;
+            end_changed = false;
         }
         intersection(plane* p1, plane* p2, float dp, float dt)
         {
@@ -72,7 +73,8 @@ class intersection
             has_points_after_ls = false;
             new_start_pt = Eigen::Vector3d::Zero();
             new_end_pt = Eigen::Vector3d::Zero();
-            isConnected = false;
+            start_changed = false;
+            end_changed = false;
         }
         int index;
         void setPlanes(plane* p1, plane* p2){plane_ref = p1; plane_neigh = p2;}
@@ -133,8 +135,6 @@ class intersection
         std::vector<Eigen::Vector3d> theoreticalLim;
         std::vector<int> possible_corner_indices;
         std::vector<int> corner_indices;
-        bool replaced_start;
-        bool replaced_end;
         float max_pixel_diff_start;
         float max_spatial_diff_start;
         float max_pixel_diff_end;
@@ -151,7 +151,13 @@ class intersection
         bool isDoubled(std::vector<intersection> all_edges);
         bool has_sister;
         bool isNearCorner(std::vector<Eigen::Vector3d> corners_pt);
-        bool isConnected;
+        bool start_changed;
+        bool end_changed;
+        std::vector<int> indices_corners;
+        std::set<int> indices_connected_lines_start;
+        std::set<int> indices_connected_lines_end;
+
+
     private:
         int Nrow;
         int Ncol;
@@ -162,7 +168,8 @@ class intersection
         void RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>& points_init, std::vector<std::pair<int,int>>& pixels_init, int tests, std::set<int>& indices_line, std::set<int>& repeated );
         void SeparatePoints(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>& points_of_plane_ref, std::vector<std::pair<int,int>>& pixels_of_plane_ref, std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>& points_of_plane_neigh, std::vector<std::pair<int,int>>& pixels_of_plane_neigh, std::set<int>& repeated_ref, std::set<int>& repeated_neigh);
         void searchLine( std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>& points_of_plane, std::vector<std::pair<int,int>>& pixels_of_plane, plane* p, std::set<int>& indices_line_plane, std::set<int>& repeated_plane);
-        bool has_points_after_ls;
+        bool has_points_after_ls;    
+
 };
 
 #include "intersection.inl"

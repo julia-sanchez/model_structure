@@ -34,7 +34,7 @@ class corner
         void setPlanes(plane* p1, plane* p2, plane* p3);
         void setLines(intersection* l1, intersection* l2);
         std::set<int> planes_indices;
-        std::set<int> lines_indices;
+        std::set<int> indices_lines;
 
     private:
 

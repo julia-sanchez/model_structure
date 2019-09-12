@@ -15,6 +15,7 @@ void save_image_pgm(std::string file_name, std::string complement, Eigen::Matrix
     std::string file_name_tot = sstm.str();
     std::ofstream file (file_name_tot, std::ios::trunc);
     file<<"P2\n";
+    image(0,0) = max_col;
     file<<image.cols()<<" "<<image.rows()<<"\n";
     file<<max_col<<"\n";
     file<<image;

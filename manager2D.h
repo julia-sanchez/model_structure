@@ -12,7 +12,6 @@
 #include "coeffWiseMulti.h"
 #include "plane.h"
 
-//const double epsilon = 0.00001;
 const double margin_factor = 1.1;
 
 class manager2D
@@ -34,7 +33,7 @@ public:
     //----------------------------------------------------------------------------------------------------------------------------------------
 
     void setImageClusterized(Eigen::MatrixXi p, std::pair<int,int> lt);
-    Eigen::MatrixXi getImageClusterized(){return image_clusterized;};
+    Eigen::MatrixXi getImageClusterized(){return image_clusterized;}
     int getMaxCol(){return max_col;}
     void setMaxCol(int mc){max_col = mc;}
     Eigen::MatrixXi getBoundariesImage();
@@ -67,7 +66,7 @@ private:
     void detect_margin();
     std::pair<int,int> lim_theta;
     std::multimap<std::pair<int,int>,std::pair<int,int>> reference;
-    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> dilate(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_in, int rad, bool must_reference);
+    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> dilate(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_in, int rad);
 };
 
 #include "manager2D.inl"
