@@ -25,6 +25,7 @@ const double not_parallel_dot_threshold = 0.9961;
 const double angle_parallel_threshold = 15;
 const int incertainty_pixels = 6;
 const double min_dist_planes =0.1; //min distance between two parallel planes (if closer gathering)
+const double min_polygone_angle = 10 * M_PI/180;
 
 class manager
 {
@@ -115,8 +116,9 @@ private:
     void fill_edges();
     bool arePlanesClose(plane pi, plane pj);
     void actualizeChanged();
-    bool cross(std::vector<Eigen::Vector3d> jonction, std::vector<Eigen::Vector3d> poly, Eigen::Vector3d normal);
+    bool DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal);
     bool isLineConnectedInPlane(int idx_line, int idx_plane, int end);
+    void correctLinesCrossing();
 
 };
 

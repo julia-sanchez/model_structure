@@ -38,6 +38,7 @@ class plane
         std::set<int> intersections_indices;
         Eigen::Vector3d mean_point_;
         std::vector<Eigen::Vector3d> ordered_corners;
+        std::vector<std::vector<Eigen::Vector3d>> memorized_corners;
 
     private:
 };

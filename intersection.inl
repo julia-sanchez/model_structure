@@ -858,7 +858,7 @@ void intersection::definePlaneConnection()
 //if sufficient quantity of current intersection pixels are really the theoritical connection, the intersection is a connection. if not it is an obstruction
     computeTheoriticalPhiTheta();
     isOpening = false;
-    float connect = 0.0;
+    int connect = 0;
     int rad = 2;
     std::set<int> to_erase;
     other_points.clear();
@@ -898,7 +898,7 @@ void intersection::definePlaneConnection()
     }
 
     std::cout<<"Number of pixels which contain the real intersection : "<<indices_of_line.size()<<std::endl;
-    std::cout<<"percentage of pixels which contain the theoritical intersection : "<<connect*100<<"%"<<std::endl<<std::endl;
+    std::cout<<"Number of pixels which contain the theoritical intersection : "<<connect<<std::endl<<std::endl;
 
     isConnection = false;
     isObstruction = false;
@@ -970,7 +970,7 @@ void intersection::definePlaneConnection()
         pt_mean /= points.size();
         pt_mean = distance * normal + pt_mean.dot(tangente)*tangente;
 
-        std::cout<<"points remaining of neghbor plane : "<<indices_sister.size()<<std::endl;
+        std::cout<<"points remaining of neighbor plane : "<<indices_sister.size()<<std::endl;
         std::cout<<"points remaining of current ref plane : "<<indices_self.size()<<std::endl;
 
         isConnection = true;
@@ -985,7 +985,7 @@ void intersection::definePlaneConnection()
         float min_proj = *std::min(proj.begin(), proj.end());
         float max_proj = *std::max(proj.begin(), proj.end());
 
-        //remove closest points from points of line ---> to change : je veux faire le for sur other_pixels (il doit y en avoir moins) si ya un voisin dans pixel je veux remettre le other_pixel dans pixel
+        //remove closest points of points of line from other_points ---> to change : je veux faire le for sur other_pixels (il doit y en avoir moins) si ya un voisin dans pixel je veux remettre le other_pixel dans pixel
         for (int i = 0; i < pixels.size(); ++i)
         {
             int min_ki = std::max(pixels[i].first-rad, 0);
@@ -1124,49 +1124,71 @@ std::vector<intersection> intersection::export_sisters()
         }
     }
 
+    iterators_lim.push_back(proj_temp.end());
+
     std::vector<intersection> vec_sisters;
-    if(iterators_lim.size()>0)
+    if(iterators_lim.size()>1)
     {
-        iterators_lim.push_back(proj_temp.end());
-        intersection inter (plane_ref, plane_neigh, delta_phi, delta_theta);
-        inter.normal = normal;
-        inter.tangente = tangente;
-        inter.pt_mean = pt_mean;
-        inter.distance = distance;
-        inter.isConnection = true;
-        inter.isObstruction = false;
-        inter.isObject = false;
-        inter.isOpening = false;
-        inter.isLine = true;
-
-        int n = 1;
-        auto it_start = iterators_lim[0];
-        ++it_start;
-        for(auto it_proj_temp = it_start; it_proj_temp != proj_temp.end(); ++it_proj_temp)
-        {
-            inter.points.push_back(points[it_proj_temp->second]);
-            inter.pixels.push_back(pixels[it_proj_temp->second]);
-            if(it_proj_temp == iterators_lim[n])
-            {
-                vec_sisters.push_back(inter);
-                ++n;
-                inter.points.clear();
-                inter.pixels.clear();
-            }
-        }
-
-        vec_sisters.push_back(inter);
-
         //fill this intersection with first line piece found
         std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> points_temp;
         std::vector<std::pair<int,int>> pixels_temp;
 
-        auto it_end = iterators_lim[0];
-        ++it_end;
-        for(auto it_proj_temp =  proj_temp.begin(); it_proj_temp != it_end; ++it_proj_temp)
+        int n = 0;
+
+        do{
+            points_temp.clear();
+            pixels_temp.clear();
+            auto it_start = proj_temp.begin();
+            if(n>0)
+            {
+                it_start = iterators_lim[n-1];
+                ++it_start;
+            }
+            auto it_end = iterators_lim[n];
+            ++it_end;
+            for(auto it_proj_temp =  it_start; it_proj_temp != it_end; ++it_proj_temp)
+            {
+                points_temp.push_back(points[it_proj_temp->second]);
+                pixels_temp.push_back(pixels[it_proj_temp->second]);
+            }
+            ++n;
+        }
+        while(points_temp.size()<min_number_points_on_line && n<iterators_lim.size());
+
+        if(n<iterators_lim.size())
         {
-            points_temp.push_back(points[it_proj_temp->second]);
-            pixels_temp.push_back(pixels[it_proj_temp->second]);
+            // fill sister pieces
+            iterators_lim.push_back(proj_temp.end());
+            intersection inter (plane_ref, plane_neigh, delta_phi, delta_theta);
+            inter.normal = normal;
+            inter.tangente = tangente;
+            inter.pt_mean = pt_mean;
+            inter.distance = distance;
+            inter.isConnection = true;
+            inter.isObstruction = false;
+            inter.isObject = false;
+            inter.isOpening = false;
+            inter.isLine = true;
+
+            auto it_start = iterators_lim[n-1];
+            ++it_start;
+            for(auto it_proj_temp = it_start; it_proj_temp != proj_temp.end(); ++it_proj_temp)
+            {
+                inter.points.push_back(points[it_proj_temp->second]);
+                inter.pixels.push_back(pixels[it_proj_temp->second]);
+                if(it_proj_temp == iterators_lim[n])
+                {
+                    if(inter.points.size()>min_number_points_on_line)
+                        vec_sisters.push_back(inter);
+                    ++n;
+                    inter.points.clear();
+                    inter.pixels.clear();
+                }
+            }
+
+            //add last iterators_lim to end of proj_temp
+            if(inter.points.size()>min_number_points_on_line)
+                vec_sisters.push_back(inter);
         }
 
         points = points_temp;
@@ -1313,6 +1335,9 @@ bool intersection::computeLim()
     start_pt = distance * normal + start * tangente;
     end_pt =   distance * normal + end * tangente;
 
+    if( (start_pt - end_pt).norm() < min_line_length)
+        return false;
+
     new_start_pt = start_pt;
     new_end_pt = end_pt;
 
@@ -1384,7 +1409,7 @@ bool intersection::isDoubled(std::vector<intersection> all_edges)
             bool same = (all_edges[k].tangente-tangente).norm() < eps && (all_edges[k].normal-normal).norm() < eps && (all_edges[k].pt_mean-pt_mean).norm() < eps;
             if(!same)
             {
-                bool parallel = acos(abs(all_edges[k].tangente.dot(tangente))) < 30*M_PI/180;
+                bool parallel = acos(abs(all_edges[k].tangente.dot(tangente))) < 15*M_PI/180;
                 bool lines_distance = ((all_edges[k].pt_mean - pt_mean) - (all_edges[k].pt_mean - pt_mean).dot(all_edges[k].tangente)*all_edges[k].tangente).norm()  < 0.05;
 
                 Eigen::Vector3d tangente_temp;
@@ -1402,7 +1427,7 @@ bool intersection::isDoubled(std::vector<intersection> all_edges)
                 double start2 = all_edges[k].start_pt.dot(tangente_temp);
                 double end2 = all_edges[k].end_pt.dot(tangente_temp);
 
-                bool superimposed = !( (start1<start2 && end1<start2) || (start2<start1 && end2<start1) );
+                bool superimposed = !( (start1<start2+0.05 && end1<start2+0.05) || (start2<start1+0.05 && end2<start1+0.05) );
 
                 bool is_the_smallest = points.size()<all_edges[k].points.size();
 
