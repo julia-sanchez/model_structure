@@ -103,7 +103,7 @@ private:
     void computeConnections(int idx_plane);
     manager3D man3D;
     manager2D man2D;
-    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed_planes;
+    Eigen::MatrixXi processed_planes;
     void remove_intersection(int* k);
     intersection inter_remaining;
     std::vector<std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>> possible_inter3D;
@@ -119,6 +119,15 @@ private:
     bool DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal);
     bool isLineConnectedInPlane(int idx_line, int idx_plane, int end);
     void correctLinesCrossing();
+    void clean_edges();
+    std::vector<intersection> edges_removed;
+    void projectOnPlane(intersection& inter, Eigen::Affine3d rot, Eigen::Vector2d& pinit, Eigen::Vector2d& pfin, Eigen::Vector2d& tangente2D, Eigen::Vector2d& normal2D, double* distance);
+    void fill_edges_in_plane();
+    void fusionCorners();
+    void fill_edges_in_planes();
+    bool DoesCross(Eigen::Affine3d rot, std::vector<Eigen::Vector3d> jonction, std::vector<Eigen::Vector3d> vec_tested);
+    bool DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p);
+    void recoverEqualStartEnd();
 
 };
 

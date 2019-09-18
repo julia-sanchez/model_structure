@@ -860,7 +860,6 @@ void intersection::definePlaneConnection()
     isOpening = false;
     int connect = 0;
     int rad = 2;
-    std::set<int> to_erase;
     other_points.clear();
     other_pixels.clear();
 
@@ -897,7 +896,6 @@ void intersection::definePlaneConnection()
         }
     }
 
-    std::cout<<"Number of pixels which contain the real intersection : "<<indices_of_line.size()<<std::endl;
     std::cout<<"Number of pixels which contain the theoritical intersection : "<<connect<<std::endl<<std::endl;
 
     isConnection = false;
@@ -984,8 +982,11 @@ void intersection::definePlaneConnection()
 
         float min_proj = *std::min(proj.begin(), proj.end());
         float max_proj = *std::max(proj.begin(), proj.end());
+        length = max_proj - min_proj;
 
-        //remove closest points of points of line from other_points ---> to change : je veux faire le for sur other_pixels (il doit y en avoir moins) si ya un voisin dans pixel je veux remettre le other_pixel dans pixel
+        std::set<int> to_add_to_line;
+
+        //remove closest points of points of line from other_points and put it to point ---> to change : je veux faire le for sur other_pixels (il doit y en avoir moins) si ya un voisin dans pixel je veux remettre le other_pixel dans pixel
         for (int i = 0; i < pixels.size(); ++i)
         {
             int min_ki = std::max(pixels[i].first-rad, 0);
@@ -1001,8 +1002,8 @@ void intersection::definePlaneConnection()
                     if(it_other_pixel_found != other_pixels.end())
                     {
                         int idx = std::distance(other_pixels.begin(), it_other_pixel_found);
-                        if(abs(proj[idx]-min_proj)>line_margin && abs(proj[idx]-max_proj)>line_margin)
-                            to_erase.insert(idx);
+                        if( (proj[idx]-min_proj) > (line_margin * length) && (max_proj-proj[idx]) > (line_margin * length))
+                            to_add_to_line.insert(idx);
                     }
                 }
             }
@@ -1010,26 +1011,26 @@ void intersection::definePlaneConnection()
 
         std::cout<<"Add neighbors pixels of current selected pixels to pixels vector"<<std::endl<<std::endl;
 
-        if(to_erase.size() > 0 && indices_self.size()>0 && indices_sister.size()>0)
+        if(to_add_to_line.size() > 0 && indices_self.size()>0 && indices_sister.size()>0)
         {
             n_other = 0;
             it_indices_self = indices_self.begin();
             it_indices_sister = indices_sister.begin();
             indices_self_temp.clear();
             indices_sister_temp.clear();
-            auto it_to_erase = to_erase.begin();
+            auto it_to_add_to_line = to_add_to_line.begin();
             std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> other_points_temp;
             std::vector<std::pair<int,int>> other_pixels_temp;
 
             for(int k = 0; k < other_points.size(); ++k)
             {
-                if(k == *it_to_erase)
+                if(k == *it_to_add_to_line)
                 {
-                     points.push_back(other_points[k]);
-                     pixels.push_back(other_pixels[k]);
-                     ++it_to_erase;
-                     if(it_to_erase == to_erase.end())
-                         --it_to_erase;
+//                     points.push_back(other_points[k]);
+//                     pixels.push_back(other_pixels[k]);
+                     ++it_to_add_to_line;
+                     if(it_to_add_to_line == to_add_to_line.end())
+                         --it_to_add_to_line;
                 }
                 else
                 {
@@ -1069,6 +1070,16 @@ void intersection::definePlaneConnection()
                 indices_sister.clear();
             }
         }
+
+//        if(plane_ref->index == 4 && plane_neigh->index == 37)
+//        {
+//            Eigen::MatrixXi image_test = Eigen::MatrixXi::Zero(Nrow, Ncol);
+//            for(int idx_pixel = 0; idx_pixel<pixels.size(); ++idx_pixel)
+//                image_test(pixels[idx_pixel].first,pixels[idx_pixel].second) = 1;
+//            std::cout<<"creating test_theoretical_line"<<std::endl;
+//            save_image_pgm("test_theoretical_line", "", image_test, 1);
+//            getchar();
+//        }
     }
     else
     {
@@ -1405,7 +1416,6 @@ bool intersection::isDoubled(std::vector<intersection> all_edges)
     {
         if(all_edges[k].isLine && all_edges[k].plane_ref->index == plane_ref->index || (all_edges[k].isConnection && all_edges[k].plane_neigh->index == plane_ref->index))
         {
-            double eps = 0.00001;
             bool same = (all_edges[k].tangente-tangente).norm() < eps && (all_edges[k].normal-normal).norm() < eps && (all_edges[k].pt_mean-pt_mean).norm() < eps;
             if(!same)
             {
@@ -1422,12 +1432,24 @@ bool intersection::isDoubled(std::vector<intersection> all_edges)
                 tangente_temp = (all_edges[k].tangente + tangente_temp)/2;
                 tangente_temp/=tangente_temp.norm();
 
-                double start1 = start_pt.dot(tangente_temp);
-                double end1 = end_pt.dot(tangente_temp);
+                double start1;
+                double end1;
+
+                if(tangente.dot(all_edges[k].tangente)<0)
+                {
+                    start1 = end_pt.dot(tangente_temp);
+                    end1 = start_pt.dot(tangente_temp);
+                }
+                else
+                {
+                    start1 = start_pt.dot(tangente_temp);
+                    end1 = end_pt.dot(tangente_temp);
+                }
                 double start2 = all_edges[k].start_pt.dot(tangente_temp);
                 double end2 = all_edges[k].end_pt.dot(tangente_temp);
+                double margin = 0.05;
 
-                bool superimposed = !( (start1<start2+0.05 && end1<start2+0.05) || (start2<start1+0.05 && end2<start1+0.05) );
+                bool superimposed = start1 > start2-margin && end1 < end2+margin;
 
                 bool is_the_smallest = points.size()<all_edges[k].points.size();
 
@@ -1597,7 +1619,7 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
                     {
                         int pixels_init_idx = std::distance(pixels_init.begin(), it_found_pixels_init);
                         indices_line.insert(pixels_init_idx);
-                        if(abs(points2D[pixels_init_idx].dot(tangente2D)-start_proj->first)<line_margin || abs(points2D[pixels_init_idx].dot(tangente2D)-end_proj->first)<line_margin)
+                        if( (points2D[pixels_init_idx].dot(tangente2D)-start_proj->first) < (line_margin * length) || (end_proj->first-points2D[pixels_init_idx].dot(tangente2D)) < (line_margin * length) )
                             repeated_indices.insert(pixels_init_idx);
                     }
                 }
@@ -1624,14 +1646,23 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
         int nbr_iterations = 10;
         Eigen::Vector2d pt2D_mean;
 
-        int n;
+        int n = 0;
+
         std::cout<<"Starting least square : "<<std::endl<<std::endl;
         for(int k =0; k<nbr_iterations; ++k)
         {
+            proj.clear();
+            for(int j = 0; j< pt2D.size(); ++j)
+                proj.insert(std::make_pair(pt2D[j].dot(tangente2D), j));
+
+            end_proj = proj.end();
+            --end_proj;
+            length = end_proj->first - proj.begin()->first;
+
             n = 0;
             for(int i = 0; i< pt2D.size(); ++i)
             {
-                if(abs(pt2D[i].dot(tangente2D)-proj.begin()->first)>line_margin * length && abs(pt2D[i].dot(tangente2D)-end_proj->first)>line_margin * length)
+                if( (pt2D[i].dot(tangente2D)-proj.begin()->first) > (line_margin * length) && (end_proj->first - pt2D[i].dot(tangente2D)) > (line_margin * length) )
                     ++n;
             }
 
@@ -1644,7 +1675,7 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
 
                 for(int i = 0; i< pt2D.size(); ++i)
                 {
-                    if(abs(pt2D[i].dot(tangente2D)-proj.begin()->first)>line_margin * length && abs(pt2D[i].dot(tangente2D)-end_proj->first)>line_margin * length)
+                    if( (pt2D[i].dot(tangente2D)-proj.begin()->first) > (line_margin * length) && (end_proj->first - pt2D[i].dot(tangente2D)) > (line_margin * length))
                     {
                         J(0,0) = pt2D[i].dot(Eigen::Vector2d(-sin(theta), cos(theta)));
                         J(1,0) = -1;
@@ -1674,13 +1705,6 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
                 }
 
                 tangente2D = {sin(theta), -cos(theta)};
-                proj.clear();
-                for(int j = 0; j< pt2D.size(); ++j)
-                    proj.insert(std::make_pair(pt2D[j].dot(tangente2D), j));
-
-                end_proj = proj.end();
-                --end_proj;
-
                 has_points_after_ls = true;
 
 //                std::cout<< "number of points : "<<n<<std::endl;
@@ -1691,88 +1715,10 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
             else
             {
                 has_points_after_ls = false;
-                std::cout<<"not enough points on line after ls process"<<std::endl; // can happen if just one point on line for example (if there were 4 and 2 are on the boundary) and then, normal is computed randomly
+                std::cout<<"not enough points on line after ls process after "<<k<<" iterations"<<std::endl; // can happen if just one point on line for example (if there were 4 and 2 are on the boundary) and then, normal is computed randomly
                 return;
             }
         }
-
-        //rechoose points
-        //---------------------------------------------------------------------------------------------------------
-
-//        proj.clear();
-//        repeated_indices.clear();
-//        indices_line.clear();
-//        for (int j = 0; j < points2D.size(); ++j)
-//        {
-//            if(abs(points2D[j].dot(normal2D)-distance2D) < max_line_distance)
-//                proj.insert(std::make_pair(points2D[j].dot(tangente2D), j));
-//        }
-
-//        auto last_it = proj.end();
-//        --last_it;
-
-//        std::vector<std::map<double, int>::iterator> iterators_lim;
-//        iterators_lim.push_back(proj.begin());
-//        for(auto it_proj = proj.begin(); it_proj != last_it; ++it_proj)
-//        {
-//            auto it_proj_after = it_proj;
-//            ++it_proj_after;
-//            float dist_after_pix = sqrt( pow( pixels_init[it_proj_after->second].first - pixels_init[it_proj->second].first , 2 ) + pow( pixels_init[it_proj_after->second].second - pixels_init[it_proj->second].second , 2 ) );
-//            float dist_after_spat = (points_init[it_proj_after->second] - points_init[it_proj->second]).norm();
-//            if(dist_after_spat > max_dist_between_points_in_line && dist_after_pix > max_dist_between_pixels_in_line) // pixel distance is added to counter problems of sampling on a line far from sensor
-//                iterators_lim.push_back(it_proj_after);
-//        }
-
-//        if(iterators_lim.size()>1)
-//        {
-//            int idx =0;
-//            int num_points = 0;
-//            for(int k = 1; k < iterators_lim.size(); ++k)
-//            {
-//                if(std::distance(iterators_lim[k-1], iterators_lim[k]) > num_points)
-//                {
-//                    idx = k;
-//                    num_points = std::distance(iterators_lim[k-1], iterators_lim[k]);
-//                }
-//            }
-
-//            std::map<double, int> proj_temp;
-
-//            for(auto it_proj_temp = iterators_lim[idx-1]; it_proj_temp != iterators_lim[idx]; ++it_proj_temp)
-//                proj_temp.insert(*it_proj_temp);
-
-//            proj = proj_temp;
-//        }
-
-//        start_proj = proj.begin();
-//        end_proj = proj.end();
-//        --end_proj;
-
-//        for (auto it_proj = proj.begin(); it_proj != proj.end(); ++it_proj)
-//        {
-//            int X = pixels_init[it_proj->second].first;
-//            int Y = pixels_init[it_proj->second].second;
-//            int imin = std::max(0, X-rad);
-//            int imax = std::min(Nrow-1, X+rad);
-//            int jmin = std::max(0, Y-rad);
-//            int jmax = std::min(Ncol-1, Y+rad);
-
-//            for(int i = imin; i<=imax; ++i)
-//            {
-//                for(int j = jmin; j<=jmax; ++j)
-//                {
-//                    auto it_found_pixels_init = std::find(pixels_init.begin(), pixels_init.end(), std::make_pair(i, j));
-//                    if(it_found_pixels_init != pixels_init.end())
-//                    {
-//                        int pixels_init_idx = std::distance(pixels_init.begin(), it_found_pixels_init);
-//                        indices_line.insert(pixels_init_idx);
-//                        if(abs(points2D[pixels_init_idx].dot(tangente2D)-start_proj->first)<line_margin || abs(points2D[pixels_init_idx].dot(tangente2D)-end_proj->first)<line_margin)
-//                            repeated_indices.insert(pixels_init_idx);
-//                    }
-//                }
-//            }
-//        }
-
 
         //convert to 3D
         //---------------------------------------------------------------------------------------------
@@ -1798,232 +1744,133 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
 
 }
 
-
-//------------------------------------------------Hough-----------------------------------------------------------------------------------------------------
-
-//void intersection::Hough(double error_angle, double error_distance)
-//{
-//    std::cout<<"Hough : Number of initial points in which we seek a line: "<<other_points.size()<<std::endl<<std::endl;
-//    double max_theta = 2*M_PI;
-//    double min_theta = 0;
-//    double delta_angle = error_angle*2;
-//    int Nhist_theta = std::ceil( (max_theta-min_theta + eps)/delta_angle );
-//    double delta_distance = error_distance * 2;
-//    std::vector<double> thetas(Nhist_theta);
-//    std::vector<double> distances(points2D.size() * Nhist_theta);
-
-//    normal2D.Zero();
-
-//    for (int n = 0; n<Nhist_theta; ++n)
-//        thetas[n] = min_theta + n*delta_angle + delta_angle/2;
-
-//    //define all possible distances for one point and one theta
-//    for (int k = 0; k<points2D.size(); ++k)
-//    {
-//        for (int n = 0; n<Nhist_theta; ++n)
-//        {
-//            normal2D = {-sin(thetas[n]), cos(thetas[n])};
-//            distances[k*Nhist_theta +n] = points2D[k].dot(normal2D);
-//        }
-//    }
-
-//    //fill histogram with theta/distance
-//    double max_distance = *(std::max_element(distances.begin(), distances.end()));
-//    double min_distance = *(std::min_element(distances.begin(), distances.end()));
-//    int Nhist_distance = std::ceil((max_distance - min_distance + eps)/delta_distance);
-
-//    Eigen::MatrixXi hist = Eigen::MatrixXi::Zero(Nhist_theta, Nhist_distance);
-//    std::multimap<std::pair<int, int>, int> angle_distance2boundary_points;
-//    for (int k = 0; k<points2D.size(); ++k)
-//    {
-//        for (int n = 0; n<Nhist_theta; ++n)
-//        {
-//            if(distances[k*Nhist_theta + n]>0)
-//            {
-//                ++hist((int)((thetas[n]-min_theta)/delta_angle), (int)((distances[k*Nhist_theta + n]-min_distance)/delta_distance));
-//                angle_distance2boundary_points.insert(std::make_pair(std::make_pair((int)((thetas[n]-min_theta)/delta_angle), (int)((distances[k*Nhist_theta + n]-min_distance)/delta_distance)), k));
-//            }
-//        }
-//    }
-
-////    save_image_pgm("Boundary_Hough", "", hist, 100);
-
-//    //search interesting bins in histogram
-
-//    int i;
-//    int j;
-//    std::vector<int> indices_on_line;
-
-//    //put points corresponding to line in points_in_line
-//    auto points_found_idx = angle_distance2boundary_points.equal_range(std::make_pair(i,j));
-
-//    for(auto it = points_found_idx.first; it !=points_found_idx.second; ++it)
-//        indices_on_line.push_back(it->second);
-
-//    //---------------------------------------------------------------------------------------------------------------------------------
-
-//    // compute line features (theta distance) with bin features (coord i and coord j)
-//    double theta = i * delta_angle + min_theta + delta_angle/2;
-//    distance2D = j * delta_distance + min_distance + delta_distance/2;
-//    tangente2D = {cos(theta), sin(theta)};
-//    normal2D = {-sin(theta), cos(theta)};
-////    if(normal2D.dot(points2D[indices_on_line[0]])<0)
-////        normal2D *= -1;
-
-//    points.resize(indices_on_line.size());
-//    pixels.resize(indices_on_line.size());
-//    std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>> pt2D(indices_on_line.size());
-//    for(int i = 0; i < indices_on_line.size(); ++i)
-//    {
-//        points[i] = other_points[indices_on_line[i]];
-//        pixels[i] = other_pixels[indices_on_line[i]];
-//        pt2D[i] = points2D[indices_on_line[i]];
-//    }
-
-//    std::cout<<"Number of points found in line : "<<indices_on_line.size()<<std::endl<<std::endl;
-
-//    //Erase , points of line and its pixels neighbors from other_points + add pixels neighbors to points
-//    std::set<int> to_erase;
-//    int rad = 1;
-//    for(int k = 0; k<indices_on_line.size(); ++k)
-//    {
-//        int X = other_pixels[indices_on_line[k]].first;
-//        int Y = other_pixels[indices_on_line[k]].second;
-//        int imin = std::max(0, X-rad);
-//        int imax = std::min(Nrow-1, X+rad);
-//        int jmin = std::max(0, Y-rad);
-//        int jmax = std::min(Ncol-1, Y+rad);
-
-//        for(int i = imin; i<=imax; ++i)
-//        {
-//            for(int j = jmin; j<=jmax; ++j)
-//            {
-//                auto it_found_pixels = std::find(other_pixels.begin(), other_pixels.end(), std::make_pair(i, j));
-//                // Get index of element from iterator
-//                if(it_found_pixels != other_pixels.end())
-//                {
-//                    int other_pixels_idx = std::distance(other_pixels.begin(), it_found_pixels);
-//                    to_erase.insert(other_pixels_idx);
-//                    points.push_back(other_points[other_pixels_idx]);
-//                    pixels.push_back(other_pixels[other_pixels_idx]);
-//                    pt2D.push_back(points2D[other_pixels_idx]);
-//                }
-//            }
-//        }
-//    }
-
-//    points2D = pt2D;
-
-//    auto it_to_erase_start = to_erase.end();
-//    --it_to_erase_start;
-//    auto it_to_erase_end = to_erase.begin();
-//    --it_to_erase_end;
-//    for(auto it_to_erase = it_to_erase_start; it_to_erase!=it_to_erase_end; --it_to_erase)
-//    {
-//        other_points.erase(other_points.begin() + *it_to_erase);
-//        other_pixels.erase(other_pixels.begin() + *it_to_erase);
-//    }
-
-//    //---------------------------------------------------------------------------------------------
-//   Eigen::MatrixXd JTJ(2,2);
-//    Eigen::MatrixXd JTr(2, 1);
-//    Eigen::MatrixXd J(2,1);
-//    double r;
-//    int nbr_iterations = 10;
-//    for(int k =0; k<nbr_iterations; ++k)
-//    {
-//        JTJ.setZero();
-//        JTr.setZero();
-//        for(int i = 0; i< points2D.size(); ++i)
-//        {
-//            J(0,0) = points2D[i].dot(Eigen::Vector2d(-cos(theta), -sin(theta)));
-//            J(1,0) = -1;
-//            r = points2D[i].dot(normal2D)-distance2D;
-//            JTJ += J * J.transpose();
-//            JTr += J * r;
-//        }
-
-//        Eigen::MatrixXd result(2, 1);
-//        result = -JTJ.llt().solve(JTr);
-//        theta += result(0);
-//        normal2D = {-sin(theta), cos(theta)};
-//        distance2D += result(1);
-//    }
-//    tangente2D = {cos(theta), sin(theta)};
-//    if(distance2D<0)
-//    {
-//        distance2D *= -1;
-//        normal2D *= -1;
-//    }
-
-//    //---------------------------------------------------------------------------------------------
-
-//    //convert to 3D
-
-//    //retransform in xy:
-//    distance2D = (distance2D*normal2D+pt_mean).dot(normal2D);
-//    tangente(0) = tangente2D(0);
-//    tangente(1) = tangente2D(1);
-//    tangente(2) = 0;
-//    tangente = rot_inv.linear()*tangente;
-//    normal(0) = normal2D(0);
-//    normal(1) = normal2D(1);
-//    normal(2) = 0;
-//    normal = rot_inv.linear()*normal;
-//    pt = plane_ref->distance*(-plane_ref->normal) + normal * distance2D;
-//    normal = pt - pt.dot(tangente)*tangente;
-//    normal /= normal.norm();
-//    distance = pt.dot(normal);
-
-//    std::cout<<"number of remaining points at the end: "<<other_points.size()<<std::endl<<std::endl;
-//}
-
 void intersection::correctObstructions(intersection& sister)
 {
     std::cout<<"normal of self : "<<normal.transpose()<<std::endl;
     std::cout<<"normal of sister : "<<sister.normal.transpose()<<std::endl;
 
-    Eigen::Vector3d normal_plane_ref = -plane_ref->normal;
-    Eigen::Vector3d normal_plane_neigh = -plane_neigh->normal;
+    if((pt_mean.norm() - sister.pt_mean.norm())>0)
+    {
+        Eigen::Vector3d normal_plane_ref = -plane_ref->normal;
+        Eigen::Vector3d normal_plane_neigh = -plane_neigh->normal;
 
-    //compute mean point projection on each plane
-    Eigen::Vector3d pt_mean_sister_proj = ( plane_ref->distance/(sister.pt_mean.dot(normal_plane_ref)) ) * sister.pt_mean;
-    Eigen::Vector3d pt_mean_self_proj = ( plane_neigh->distance/(     pt_mean.dot(normal_plane_neigh)) ) * pt_mean;
+        //compute mean point projection on each plane
+        Eigen::Vector3d pt_mean_sister_proj = ( plane_ref->distance/(sister.pt_mean.dot(normal_plane_ref)) ) * sister.pt_mean;
+        Eigen::Vector3d pt_mean_self_proj = ( plane_neigh->distance/(     pt_mean.dot(normal_plane_neigh)) ) * pt_mean;
 
-    //compute (mean point + tangente) projection on each plane
-    Eigen::Vector3d pt_mean_and_tangente_sister_proj = ( plane_ref->distance/( (sister.pt_mean+sister.tangente).dot(normal_plane_ref)) ) * ( sister.pt_mean+sister.tangente );
-    Eigen::Vector3d pt_mean_and_tangente_self_proj = ( plane_neigh->distance/( (pt_mean + tangente).dot(normal_plane_neigh)) ) * ( pt_mean + tangente );
+        //compute (mean point + tangente) projection on each plane
+        Eigen::Vector3d pt_mean_and_tangente_sister_proj = ( plane_ref->distance/( (sister.pt_mean+sister.tangente).dot(normal_plane_ref)) ) * ( sister.pt_mean+sister.tangente );
+        Eigen::Vector3d pt_mean_and_tangente_self_proj = ( plane_neigh->distance/( (pt_mean + tangente).dot(normal_plane_neigh)) ) * ( pt_mean + tangente );
 
-    //deduce tangente projection on each plane
-    Eigen::Vector3d tangente_sister_proj = pt_mean_and_tangente_sister_proj - pt_mean_sister_proj;
-    tangente_sister_proj /= tangente_sister_proj.norm();
-    Eigen::Vector3d tangente_self_proj = pt_mean_and_tangente_self_proj - pt_mean_self_proj;
-    tangente_self_proj /= tangente_self_proj.norm();
+        //deduce tangente projection on each plane
+        Eigen::Vector3d tangente_sister_proj = pt_mean_and_tangente_sister_proj - pt_mean_sister_proj;
+        tangente_sister_proj /= tangente_sister_proj.norm();
+        Eigen::Vector3d tangente_self_proj = pt_mean_and_tangente_self_proj - pt_mean_self_proj;
+        tangente_self_proj /= tangente_self_proj.norm();
 
-    if(acos(tangente.dot(tangente_sister_proj))>M_PI/2)
-        tangente_sister_proj *=-1;
-    if(acos(sister.tangente.dot(tangente_self_proj))>M_PI/2)
-        tangente_self_proj *=-1;
+        if(acos(tangente.dot(tangente_sister_proj))>M_PI/2)
+            tangente_sister_proj *=-1;
+        if(acos(sister.tangente.dot(tangente_self_proj))>M_PI/2)
+            tangente_self_proj *=-1;
 
-    //compute tangentes as mean of current and projected
-    tangente = (tangente + tangente_sister_proj)/2;
-    tangente /= tangente.norm();
-    sister.tangente = (sister.tangente + tangente_self_proj)/2;
-    sister.tangente /= sister.tangente.norm();
+        //compute tangentes as mean of current and projected
+        tangente = (tangente + tangente_sister_proj)/2;
+        tangente /= tangente.norm();
 
-    //compute new mean points as mean of current and projected
-    pt_mean = (pt_mean + pt_mean_sister_proj)/2;
-    sister.pt_mean = (sister.pt_mean + pt_mean_self_proj) / 2;
+        //compute new mean points as mean of current and projected
+        pt_mean = (pt_mean + pt_mean_sister_proj)/2;
 
-    //deduce normal of lines
-    normal = pt_mean - pt_mean.dot(tangente)*tangente;
-    normal /= normal.norm();
-    sister.normal = sister.pt_mean - sister.pt_mean.dot(sister.tangente)*sister.tangente;
-    sister.normal /= sister.normal.norm();
+        //deduce normal of lines
+        normal = pt_mean - pt_mean.dot(tangente)*tangente;
+        normal /= normal.norm();
 
-    //deduce distance of lines
-    distance = abs(pt_mean.dot(normal));
-    sister.distance = abs(sister.pt_mean.dot(sister.normal));
+        //deduce distance of lines
+        distance = abs(pt_mean.dot(normal));
 
-    std::cout<<"normal of corrected self : "<<normal.transpose()<<std::endl<<std::endl;
+        std::cout<<"normal of corrected self : "<<normal.transpose()<<std::endl<<std::endl;
+    }
+    else
+    {
+        Eigen::Vector3d normal_plane_ref = -plane_ref->normal;
+        Eigen::Vector3d normal_plane_neigh = -plane_neigh->normal;
+
+        //compute mean point projection on each plane
+        Eigen::Vector3d pt_mean_sister_proj = ( plane_ref->distance/(sister.pt_mean.dot(normal_plane_ref)) ) * sister.pt_mean;
+        Eigen::Vector3d pt_mean_self_proj = ( plane_neigh->distance/(     pt_mean.dot(normal_plane_neigh)) ) * pt_mean;
+
+        //compute (mean point + tangente) projection on each plane
+        Eigen::Vector3d pt_mean_and_tangente_sister_proj = ( plane_ref->distance/( (sister.pt_mean+sister.tangente).dot(normal_plane_ref)) ) * ( sister.pt_mean+sister.tangente );
+        Eigen::Vector3d pt_mean_and_tangente_self_proj = ( plane_neigh->distance/( (pt_mean + tangente).dot(normal_plane_neigh)) ) * ( pt_mean + tangente );
+
+        //deduce tangente projection on each plane
+        Eigen::Vector3d tangente_sister_proj = pt_mean_and_tangente_sister_proj - pt_mean_sister_proj;
+        tangente_sister_proj /= tangente_sister_proj.norm();
+        Eigen::Vector3d tangente_self_proj = pt_mean_and_tangente_self_proj - pt_mean_self_proj;
+        tangente_self_proj /= tangente_self_proj.norm();
+
+        if(acos(tangente.dot(tangente_sister_proj))>M_PI/2)
+            tangente_sister_proj *=-1;
+        if(acos(sister.tangente.dot(tangente_self_proj))>M_PI/2)
+            tangente_self_proj *=-1;
+
+        //compute tangentes as mean of current and projected
+        sister.tangente = (sister.tangente + tangente_self_proj)/2;
+        sister.tangente /= sister.tangente.norm();
+
+        //compute new mean points as mean of current and projected
+        sister.pt_mean = (sister.pt_mean + pt_mean_self_proj) / 2;
+
+        //deduce normal of lines
+        sister.normal = sister.pt_mean - sister.pt_mean.dot(sister.tangente)*sister.tangente;
+        sister.normal /= sister.normal.norm();
+
+        //deduce distance of lines
+        sister.distance = abs(sister.pt_mean.dot(sister.normal));
+
+        std::cout<<"normal of corrected self : "<<normal.transpose()<<std::endl<<std::endl;
+    }
+
+//    Eigen::Vector3d normal_plane_ref = -plane_ref->normal;
+//    Eigen::Vector3d normal_plane_neigh = -plane_neigh->normal;
+
+//    //compute mean point projection on each plane
+//    Eigen::Vector3d pt_mean_sister_proj = ( plane_ref->distance/(sister.pt_mean.dot(normal_plane_ref)) ) * sister.pt_mean;
+//    Eigen::Vector3d pt_mean_self_proj = ( plane_neigh->distance/(     pt_mean.dot(normal_plane_neigh)) ) * pt_mean;
+
+//    //compute (mean point + tangente) projection on each plane
+//    Eigen::Vector3d pt_mean_and_tangente_sister_proj = ( plane_ref->distance/( (sister.pt_mean+sister.tangente).dot(normal_plane_ref)) ) * ( sister.pt_mean+sister.tangente );
+//    Eigen::Vector3d pt_mean_and_tangente_self_proj = ( plane_neigh->distance/( (pt_mean + tangente).dot(normal_plane_neigh)) ) * ( pt_mean + tangente );
+
+//    //deduce tangente projection on each plane
+//    Eigen::Vector3d tangente_sister_proj = pt_mean_and_tangente_sister_proj - pt_mean_sister_proj;
+//    tangente_sister_proj /= tangente_sister_proj.norm();
+//    Eigen::Vector3d tangente_self_proj = pt_mean_and_tangente_self_proj - pt_mean_self_proj;
+//    tangente_self_proj /= tangente_self_proj.norm();
+
+//    if(acos(tangente.dot(tangente_sister_proj))>M_PI/2)
+//        tangente_sister_proj *=-1;
+//    if(acos(sister.tangente.dot(tangente_self_proj))>M_PI/2)
+//        tangente_self_proj *=-1;
+
+//    //compute tangentes as mean of current and projected
+//    tangente = (tangente + tangente_sister_proj)/2;
+//    tangente /= tangente.norm();
+//    sister.tangente = (sister.tangente + tangente_self_proj)/2;
+//    sister.tangente /= sister.tangente.norm();
+
+//    //compute new mean points as mean of current and projected
+//    pt_mean = (pt_mean + pt_mean_sister_proj)/2;
+//    sister.pt_mean = (sister.pt_mean + pt_mean_self_proj) / 2;
+
+//    //deduce normal of lines
+//    normal = pt_mean - pt_mean.dot(tangente)*tangente;
+//    normal /= normal.norm();
+//    sister.normal = sister.pt_mean - sister.pt_mean.dot(sister.tangente)*sister.tangente;
+//    sister.normal /= sister.normal.norm();
+
+//    //deduce distance of lines
+//    distance = abs(pt_mean.dot(normal));
+//    sister.distance = abs(sister.pt_mean.dot(sister.normal));
+
+//    std::cout<<"normal of corrected self : "<<normal.transpose()<<std::endl<<std::endl;
 }

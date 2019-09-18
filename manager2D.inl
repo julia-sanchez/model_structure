@@ -264,7 +264,7 @@ void manager2D::removeLittleObjects(int size_min)
                         {
                             if(region(region_i, region_j))
                             {
-                                int rad = 1;
+                                int rad = 2;
                                 int min_ki = std::max(region_i-rad, 0);
                                 int max_ki = std::min(region_i+rad, Nrow-1);
                                 int min_kj = std::max(region_j-rad, lim_theta.first);
