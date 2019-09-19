@@ -116,7 +116,7 @@ private:
     void fill_edges();
     bool arePlanesClose(plane pi, plane pj);
     void actualizeChanged();
-    bool DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal);
+    bool DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal, std::vector<Eigen::Vector3d>& vector_crossed);
     bool isLineConnectedInPlane(int idx_line, int idx_plane, int end);
     void correctLinesCrossing();
     void clean_edges();
@@ -126,7 +126,7 @@ private:
     void fusionCorners();
     void fill_edges_in_planes();
     bool DoesCross(Eigen::Affine3d rot, std::vector<Eigen::Vector3d> jonction, std::vector<Eigen::Vector3d> vec_tested);
-    bool DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p);
+    bool DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p, std::vector<Eigen::Vector3d>& vector_crossed);
     void recoverEqualStartEnd();
 
 };

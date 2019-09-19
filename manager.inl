@@ -835,20 +835,20 @@ void manager::extractBoundImage()
     computeTheoriticalLinesIntersections(); // for 2 edges of one plane intersection
     std::cout<<"Stop computing theoritical corners (intersections between lines of a same plane)"<<std::endl<<std::endl;
 
-//    for(int it_corners = 0; it_corners < possible_corners.size(); ++it_corners)
-//    {
-//        if(possible_corners[it_corners].isLineIntersection)
-//        {
-//            std::cout<<"possible_corner n° : "<<it_corners<<" -> isLineintersection"<<std::endl;
-//            std::cout<<"\t lines n° : ";
-//            for(auto k = 0; k < possible_corners[it_corners].lines.size(); ++k)
-//            {
-//                if( (all_edges[possible_corners[it_corners].lines[k]->index].new_start_pt- possible_corners[it_corners].pt).norm()< epsilon || (all_edges[possible_corners[it_corners].lines[k]->index].new_end_pt- possible_corners[it_corners].pt).norm()< epsilon)
-//                    std::cout<< possible_corners[it_corners].lines[k]->index<<" ";
-//            }
-//            std::cout<<std::endl;
-//        }
-//    }
+    for(int it_corners = 0; it_corners < possible_corners.size(); ++it_corners)
+    {
+        if(possible_corners[it_corners].isLineIntersection)
+        {
+            std::cout<<"possible_corner n° : "<<it_corners<<" -> isLineintersection"<<std::endl;
+            std::cout<<"\t lines n° : ";
+            for(auto k = 0; k < possible_corners[it_corners].lines.size(); ++k)
+            {
+                if( (all_edges[possible_corners[it_corners].lines[k]->index].new_start_pt- possible_corners[it_corners].pt).norm()< epsilon || (all_edges[possible_corners[it_corners].lines[k]->index].new_end_pt- possible_corners[it_corners].pt).norm()< epsilon)
+                    std::cout<< possible_corners[it_corners].lines[k]->index<<" ";
+            }
+            std::cout<<std::endl;
+        }
+    }
 
     recoverEqualStartEnd();
 
@@ -866,6 +866,7 @@ void manager::extractBoundImage()
     std::cout<<"reStop computing theoritical corners (two parallel lines connected)"<<std::endl<<std::endl;
 
     //--------------------------------//--------------------------------//--------------------------------
+    recoverEqualStartEnd();
     clean_edges();          //Removing 1 or 2 segments connected with nothing
     fill_edges_in_planes();
     correctLinesCrossing();
@@ -1090,15 +1091,15 @@ void manager::recoverEqualStartEnd()
             {
                 all_edges[k].new_end_pt = all_edges[k].end_pt;
                 all_edges[k].end_changed = false;
-                all_edges[k].max_pixel_diff_start = max_pix_dist_for_line_connection;
-                all_edges[k].max_spatial_diff_start = max_spat_dist_for_line_connection;
+                all_edges[k].max_pixel_diff_end = max_pix_dist_for_line_connection;
+                all_edges[k].max_spatial_diff_end = max_spat_dist_for_line_connection;
             }
             else
             {
                 all_edges[k].new_start_pt = all_edges[k].start_pt;
                 all_edges[k].start_changed = false;
-                all_edges[k].max_pixel_diff_end = max_pix_dist_for_line_connection;
-                all_edges[k].max_spatial_diff_end = max_spat_dist_for_line_connection;
+                all_edges[k].max_pixel_diff_start = max_pix_dist_for_line_connection;
+                all_edges[k].max_spatial_diff_start = max_spat_dist_for_line_connection;
             }
         }
     }
@@ -1128,14 +1129,11 @@ void manager::fusionCorners()
                     int idx3 = 100000;
                     int idxc11 = possible_corners[c1].lines[0]->index;
                     int idxc12 = possible_corners[c1].lines[1]->index;
+
                     if(idx1 == idxc11)
-                    {
                         idx3 = idxc12;
-                    }
                     else if(idx1 == idxc12)
-                    {
                         idx3 = idxc11;
-                    }
                     else if(idx2 == idxc11)
                     {
                         int temp = idx1;
@@ -1143,7 +1141,7 @@ void manager::fusionCorners()
                         idx2 = temp;
                         idx3 = idxc12;
                     }
-                    else if(idx1 == idxc12)
+                    else if(idx2 == idxc12)
                     {
                         int temp = idx1;
                         idx1 = idx2;
@@ -1154,10 +1152,22 @@ void manager::fusionCorners()
                     //check if there is other corner with same connection line involved and which is a lineintersection
                     if( (possible_corners[c1].isLineIntersection || possible_corners[c1].isPlaneIntersection ) && (possible_corners[c1].pt - possible_corners[c].pt).norm() < fusion_max_dist && idx3 != 100000 )
                     {
-                        bool line_idx1_is_close_to_c1 = (all_edges[idx1].new_start_pt - possible_corners[c1].pt).norm() < fusion_max_dist || (all_edges[idx1].new_end_pt - possible_corners[c].pt).norm() < fusion_max_dist;
+                        bool line_idx1_is_close_to_c1 = (all_edges[idx1].new_start_pt - possible_corners[c1].pt).norm() < fusion_max_dist || (all_edges[idx1].new_end_pt - possible_corners[c1].pt).norm() < fusion_max_dist;
                         bool line_idx3_is_close_to_c1 = (all_edges[idx3].new_start_pt - possible_corners[c1].pt).norm() < fusion_max_dist || (all_edges[idx3].new_end_pt - possible_corners[c1].pt).norm() < fusion_max_dist;
 
-                        if(line_idx1_is_close_to_c1 && line_idx3_is_close_to_c1)
+                        bool sufficient_length_for_no_connections = true;
+
+                        if(!all_edges[idx1].isConnection)
+                          sufficient_length_for_no_connections = sufficient_length_for_no_connections && all_edges[idx1].length > 0.1;
+
+                        if(!all_edges[idx2].isConnection)
+                          sufficient_length_for_no_connections = sufficient_length_for_no_connections && all_edges[idx2].length > 0.1;
+
+                        if(!all_edges[idx3].isConnection)
+                          sufficient_length_for_no_connections = sufficient_length_for_no_connections && all_edges[idx3].length > 0.1;
+
+
+                        if(line_idx1_is_close_to_c1 && line_idx3_is_close_to_c1 && sufficient_length_for_no_connections)
                         {
                             //check if they are connected at the same extremity of connection line
                             bool start_idx1_c = false;
@@ -1172,7 +1182,7 @@ void manager::fusionCorners()
                             else
                                 start_idx1_c1 = false;
 
-                            bool have_different_planes = all_edges[idx2].plane_ref->index != all_edges[idx3].plane_ref->index;
+                            bool have_different_planes = all_edges[idx2].plane_ref->index != all_edges[idx3].plane_ref->index || all_edges[idx2].isConnection || all_edges[idx3].isConnection;
 
                             //check that the corner point of c1 is on the same side of the connection line
                             if( ( (start_idx1_c1 && start_idx1_c ) || ( !start_idx1_c1 && !start_idx1_c ) ) && have_different_planes)
@@ -1205,6 +1215,7 @@ void manager::fusionCorners()
 
                                 //add new corner
                                 corner c;
+                                c.isLineIntersection = true;
                                 c.lines.resize(3);
                                 c.lines[0] = &all_edges[idx1];
                                 c.lines[1] = &all_edges[idx2];
@@ -1843,68 +1854,62 @@ void manager::computeParallelLinesIntersections()
 
                     if(all_edges[*it_edge].tangente.dot(all_edges[*it_edge_other].tangente)<0) // two lines oriented in opposite directions
                     {
-                        double dist1 = (all_edges[*it_edge].end_pt - all_edges[*it_edge_other].end_pt).norm();
-                        double dist2 = (all_edges[*it_edge].start_pt - all_edges[*it_edge_other].start_pt).norm();
-
                         if( !all_edges[*it_edge].start_changed && !all_edges[*it_edge_other].start_changed && !all_edges[*it_edge].end_changed && !all_edges[*it_edge_other].end_changed)
                         {
+                            double dist1 = (all_edges[*it_edge].end_pt - all_edges[*it_edge_other].end_pt).norm();
+                            double dist2 = (all_edges[*it_edge].start_pt - all_edges[*it_edge_other].start_pt).norm();
+
                             if(dist1<dist2)
                             {
                                 dist = dist1;
                                 pt = (all_edges[*it_edge].end_pt + all_edges[*it_edge_other].end_pt) / 2;
-                                to_change = !all_edges[*it_edge].end_changed && !all_edges[*it_edge_other].end_changed;
+                                to_change = true;
                             }
                             else
                             {
                                 dist = dist2;
                                 pt = (all_edges[*it_edge].start_pt + all_edges[*it_edge_other].start_pt) / 2;
-                                to_change = !all_edges[*it_edge].start_changed && !all_edges[*it_edge_other].start_changed;
+                                to_change = true;
                             }
                         }
                         else if( (!all_edges[*it_edge].start_changed && !all_edges[*it_edge_other].start_changed) && (all_edges[*it_edge].end_changed || all_edges[*it_edge_other].end_changed))
                         {
-                            dist = dist2;
                             pt = (all_edges[*it_edge].start_pt + all_edges[*it_edge_other].start_pt) / 2;
-                            to_change = !all_edges[*it_edge].start_changed && !all_edges[*it_edge_other].start_changed;
+                            to_change = true;
                         }
                         else if( (all_edges[*it_edge].start_changed || all_edges[*it_edge_other].start_changed) && (!all_edges[*it_edge].end_changed && !all_edges[*it_edge_other].end_changed) )
                         {
-                            dist = dist1;
                             pt = (all_edges[*it_edge].end_pt + all_edges[*it_edge_other].end_pt) / 2;
-                            to_change = !all_edges[*it_edge].end_changed && !all_edges[*it_edge_other].end_changed;
+                            to_change = true;
                         }
                         else
                             to_change = false;
                     }
                     else // two lines oriented in the same direction
                     {
-                        double dist1 = (all_edges[*it_edge].start_pt - all_edges[*it_edge_other].end_pt).norm();
-                        double dist2 = (all_edges[*it_edge].end_pt - all_edges[*it_edge_other].start_pt).norm();
-
                         if( !all_edges[*it_edge].start_changed && !all_edges[*it_edge_other].end_changed && !all_edges[*it_edge].end_changed && !all_edges[*it_edge_other].start_changed)
                         {
+                            double dist1 = (all_edges[*it_edge].start_pt - all_edges[*it_edge_other].end_pt).norm();
+                            double dist2 = (all_edges[*it_edge].end_pt - all_edges[*it_edge_other].start_pt).norm();
+
                             if(dist1<dist2)
                             {
-                                dist = dist1;
                                 pt = (all_edges[*it_edge].start_pt + all_edges[*it_edge_other].end_pt) / 2;
                                 to_change = true;
                             }
                             else
                             {
-                                dist = dist2;
                                 pt = (all_edges[*it_edge].end_pt + all_edges[*it_edge_other].start_pt) / 2;
                                 to_change = true;
                             }
                         }
                         else if( (!all_edges[*it_edge].start_changed && !all_edges[*it_edge_other].end_changed) && (all_edges[*it_edge].end_changed || all_edges[*it_edge_other].start_changed))
                         {
-                            dist = dist2;
                             pt = (all_edges[*it_edge].start_pt + all_edges[*it_edge_other].end_pt) / 2;
                             to_change = true;
                         }
                         else if( (all_edges[*it_edge].start_changed || all_edges[*it_edge_other].end_changed) && (!all_edges[*it_edge].end_changed && !all_edges[*it_edge_other].start_changed) )
                         {
-                            dist = dist1;
                             pt = (all_edges[*it_edge].end_pt + all_edges[*it_edge_other].start_pt) / 2;
                             to_change = true;
                         }
@@ -1912,19 +1917,19 @@ void manager::computeParallelLinesIntersections()
                             to_change = false;
                     }
 
-                    bool lim_distance = dist < max_spat_dist_for_line_connection;
                     if(to_change)
                     {
-                        if(lim_distance)
-                        {
-                            corner c;
-                            c.setLines(&all_edges[*it_edge], &all_edges[*it_edge_other]);
-                            c.pt = pt;
-                            c.isLineContinuity = true;
+                        std::cout<<"try continuity between lines : "<<*it_edge<<" and "<<*it_edge_other<<std::endl<<std::endl;
+                        corner c;
+                        c.setLines(&all_edges[*it_edge], &all_edges[*it_edge_other]);
+                        c.pt = pt;
+                        c.isLineContinuity = true;
 
-                            bool isCorner = replaceLim2(all_edges[*it_edge], all_edges[*it_edge_other], c.pt);
-                            if(isCorner)
-                                possible_corners.push_back(c);
+                        bool isCorner = replaceLim2(all_edges[*it_edge], all_edges[*it_edge_other], c.pt);
+                        if(isCorner)
+                        {
+                            possible_corners.push_back(c);
+                            std::cout<<"there is continuity point : "<<c.pt.transpose()<<std::endl<<std::endl;
                         }
                     }
                 }
@@ -1954,17 +1959,15 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
     float dist_line1 = ((potential_corner_pt - inter1.pt_mean) - (potential_corner_pt - inter1.pt_mean).dot(inter1.tangente) * inter1.tangente).norm();
     float dist_line2 = ((potential_corner_pt - inter2.pt_mean) - (potential_corner_pt - inter2.pt_mean).dot(inter2.tangente) * inter2.tangente).norm();
 
-    double eps = 0.00001;
+    bool start1_replaced = ( start_diff_pix1 < inter1.max_pixel_diff_start || start_diff_spat1 < inter1.max_spatial_diff_start);
+    bool end1_replaced = ( end_diff_pix1 < inter1.max_pixel_diff_end || end_diff_spat1 < inter1.max_spatial_diff_end );
+    bool start2_replaced = ( start_diff_pix2 < inter2.max_pixel_diff_start || start_diff_spat2 < inter2.max_spatial_diff_start );
+    bool end2_replaced = ( end_diff_pix2 < inter2.max_pixel_diff_end || end_diff_spat2 < inter2.max_spatial_diff_end );
 
-    bool start1_replaced = ( start_diff_pix1-inter1.max_pixel_diff_start < eps || start_diff_spat1-inter1.max_spatial_diff_start<eps );
-    bool end1_replaced = ( end_diff_pix1-inter1.max_pixel_diff_end<eps || end_diff_spat1-inter1.max_spatial_diff_end<eps );
-    bool start2_replaced = ( start_diff_pix2-inter2.max_pixel_diff_start<eps || start_diff_spat2-inter2.max_spatial_diff_start<eps );
-    bool end2_replaced = ( end_diff_pix2-inter2.max_pixel_diff_end<eps || end_diff_spat2-inter2.max_spatial_diff_end<eps );
-
-    bool start1_can_be_replaced = ( dist_line1 < max_line_distance && ( start_diff_pix1 < max_pix_dist_for_line_connection || start_diff_spat1 < max_spat_dist_for_line_connection) );
-    bool end1_can_be_replaced = ( dist_line1 < max_line_distance && ( end_diff_pix1 < max_pix_dist_for_line_connection || end_diff_spat1 < max_spat_dist_for_line_connection) );
-    bool start2_can_be_replaced = ( dist_line2 < max_line_distance && (start_diff_pix2 < max_pix_dist_for_line_connection || start_diff_spat2 < max_spat_dist_for_line_connection) );
-    bool end2_can_be_replaced = ( dist_line2 < max_line_distance && (end_diff_pix2 < max_pix_dist_for_line_connection || end_diff_spat2 < max_spat_dist_for_line_connection) );
+    bool start1_can_be_replaced = ( dist_line1 < 0.05 && ( start_diff_pix1 < max_pix_dist_for_line_connection || start_diff_spat1 < max_spat_dist_for_line_connection) );
+    bool end1_can_be_replaced = ( dist_line1 < 0.05 && ( end_diff_pix1 < max_pix_dist_for_line_connection || end_diff_spat1 < max_spat_dist_for_line_connection) );
+    bool start2_can_be_replaced = ( dist_line2 < 0.05 && (start_diff_pix2 < max_pix_dist_for_line_connection || start_diff_spat2 < max_spat_dist_for_line_connection) );
+    bool end2_can_be_replaced = ( dist_line2 < 0.05 && (end_diff_pix2 < max_pix_dist_for_line_connection || end_diff_spat2 < max_spat_dist_for_line_connection) );
 
     bool corner_used = false;
 
@@ -2410,9 +2413,10 @@ void manager::order_polygone_corners()
                                 std::vector<Eigen::Vector3d> jonction(2);
                                 jonction[0] = current_point;
                                 jonction[1] = all_edges[*it_idx_lines_other].new_start_pt;
-                                if(!DoesCrossPoly(jonction, planes[idx_plane].memorized_corners, planes[idx_plane].normal)) //check new link does not cross other previous lines
+                                std::vector<Eigen::Vector3d> vector_crossed;
+                                if(!DoesCrossPoly(jonction, planes[idx_plane].memorized_corners, planes[idx_plane].normal, vector_crossed)) //check new link does not cross other previous lines
                                 {
-                                    if(!DoesCrossLines(jonction, planes[idx_plane])) //check new link does not cross other previous lines
+                                    if(!DoesCrossLines(jonction, planes[idx_plane], vector_crossed)) //check new link does not cross other previous lines
                                     {
                                         if( (all_edges[*it_idx_lines_other].new_start_pt - current_point).norm() < epsilon) // either it's the same point and lines are connected....
                                         {
@@ -2443,9 +2447,10 @@ void manager::order_polygone_corners()
                                  jonction[0] = current_point;
                                  jonction[1] = all_edges[*it_idx_lines_other].new_end_pt;
 
-                                 if(!DoesCrossPoly(jonction, planes[idx_plane].memorized_corners, planes[idx_plane].normal)) //check new link does not cross other previous lines
+                                 std::vector<Eigen::Vector3d> vector_crossed;
+                                 if(!DoesCrossPoly(jonction, planes[idx_plane].memorized_corners, planes[idx_plane].normal, vector_crossed)) //check new link does not cross other previous lines
                                  {
-                                     if(!DoesCrossLines(jonction, planes[idx_plane])) //check new link does not cross other previous lines
+                                     if(!DoesCrossLines(jonction, planes[idx_plane], vector_crossed)) //check new link does not cross other previous lines
                                      {
                                         if( (all_edges[*it_idx_lines_other].new_end_pt - current_point).norm() < epsilon) // either it's the same point and lines are connected with each other, or it is not the same point and the lines are not connected to anything else.
                                         {
@@ -2498,6 +2503,7 @@ void manager::order_polygone_corners()
                         for(int k = 0; k < planes[idx_plane].ordered_corners.size(); ++k)
                             ordered_corners_temp[k] = planes[idx_plane].ordered_corners[planes[idx_plane].ordered_corners.size()-1-k];
                         planes[idx_plane].ordered_corners = ordered_corners_temp;
+                        planes[idx_plane].memorized_corners[ planes[idx_plane].memorized_corners.size()-1] = planes[idx_plane].ordered_corners;
                         Eigen::Vector3d temp = current_point;
                         current_point = init_point;
                         init_point = temp;
@@ -2513,10 +2519,73 @@ void manager::order_polygone_corners()
                 jonction[0] = current_point;
                 jonction[1] = init_point;
 
-                while( (DoesCrossPoly(jonction, planes[idx_plane].memorized_corners, planes[idx_plane].normal) || DoesCrossLines(jonction, planes[idx_plane]) ) && planes[idx_plane].ordered_corners.size() > 1)
+                std::vector<Eigen::Vector3d> vector_crossed_poly(2);
+                std::vector<Eigen::Vector3d> vector_crossed_lines(2);
+                bool crossPoly = DoesCrossPoly(jonction, planes[idx_plane].memorized_corners, planes[idx_plane].normal, vector_crossed_poly);
+                bool crossLine = DoesCrossLines(jonction, planes[idx_plane], vector_crossed_lines);
+
+                //define features of lines in 2D
+                Eigen::Affine3d rot = Eigen::Affine3d::Identity();
+
+                float angle = acos(-(planes[idx_plane].normal)(2));   //angle between normal and z axis [0, pi]
+                Eigen::Vector3d axis;
+                if(angle>epsilon)
                 {
-                    planes[idx_plane].ordered_corners.pop_back();
-                    current_point = planes[idx_plane].ordered_corners[planes[idx_plane].ordered_corners.size()-1];
+                    axis = -planes[idx_plane].normal.cross(Eigen::Vector3d(0,0,1)); // rotation axis to align normal onto z axis
+                    axis /= axis.norm();
+                    rot.rotate( Eigen::AngleAxisd(angle, axis) );
+                }
+
+                while( ( crossPoly ||  crossLine) && planes[idx_plane].ordered_corners.size() > 2)
+                {
+                    std::vector<Eigen::Vector3d> vector_crossed(2);
+                    if(crossPoly)
+                        vector_crossed = vector_crossed_poly;
+                    else if(crossLine)
+                        vector_crossed = vector_crossed_lines;
+
+
+                    //compute how many crosses for init and for current to pop_back the point which has more crosses
+                    int count_current = 0;
+                    int count_init = 0;
+
+                    for(int i = 1; i < planes[idx_plane].ordered_corners.size()-1; ++i)
+                    {
+                        std::vector<Eigen::Vector3d> temp_test(2);
+                        temp_test[0] = current_point;
+                        temp_test[1] = planes[idx_plane].ordered_corners[i];
+                        if(DoesCross(rot, temp_test, vector_crossed))
+                            ++count_current;
+
+                        temp_test[0] = init_point;
+                        if(DoesCross(rot, temp_test, vector_crossed))
+                            ++count_init;
+                    }
+
+                    if(count_current > count_init)
+                    {
+                        //Remove last point
+                        planes[idx_plane].ordered_corners.pop_back();
+                        //actualize current point and jonction 0
+                        current_point = planes[idx_plane].ordered_corners[planes[idx_plane].ordered_corners.size()-1];
+                        jonction[0] = current_point;
+                    }
+                    else
+                    {
+                        //(remove first point)
+                        std::vector<Eigen::Vector3d> ordered_temp(planes[idx_plane].ordered_corners.size()-1);
+                        for(int i = 1; i < planes[idx_plane].ordered_corners.size(); ++i)
+                            ordered_temp[i-1] = planes[idx_plane].ordered_corners[i];
+                        planes[idx_plane].ordered_corners = ordered_temp;
+                        //actualize init point and jonction 1
+                        init_point = planes[idx_plane].ordered_corners[0];
+                        jonction[1] = init_point;
+                    }
+
+                    planes[idx_plane].memorized_corners[ planes[idx_plane].memorized_corners.size()-1] = planes[idx_plane].ordered_corners;
+
+                    crossPoly = DoesCrossPoly(jonction, planes[idx_plane].memorized_corners, planes[idx_plane].normal, vector_crossed_poly);
+                    crossLine = DoesCrossLines(jonction, planes[idx_plane], vector_crossed_lines);
                 }
 
                 if(sum_processed < planes[idx_plane].intersections_indices.size())
@@ -2627,21 +2696,58 @@ void manager::correctLinesCrossing()
 
                                 Eigen::Vector3d pt_intersect3D = { pt_intersect2D(0), pt_intersect2D(1),  planes[idx_plane].distance};
                                 pt_intersect3D = rot_inv.linear() * pt_intersect3D;
-                                if( (pinit-pt_intersect2D).norm() < (pfin-pt_intersect2D).norm())
-                                    all_edges[*it_intersections_indices].new_start_pt = pt_intersect3D;
-                                else
-                                    all_edges[*it_intersections_indices].new_end_pt = pt_intersect3D;
 
-                                if( (pinit_other-pt_intersect2D).norm() < (pfin_other-pt_intersect2D).norm())
-                                    all_edges[*it_intersections_indices1].new_start_pt = pt_intersect3D;
-                                else
-                                    all_edges[*it_intersections_indices1].new_end_pt = pt_intersect3D;
+                                bool could_be_intersection1 = (all_edges[*it_intersections_indices].start_pt-pt_intersect3D).norm() < max_spat_dist_for_line_connection || (all_edges[*it_intersections_indices].end_pt-pt_intersect3D).norm() < max_spat_dist_for_line_connection;
+                                bool could_be_intersection2 = (all_edges[*it_intersections_indices1].start_pt-pt_intersect3D).norm() < max_spat_dist_for_line_connection || (all_edges[*it_intersections_indices1].end_pt-pt_intersect3D).norm() < max_spat_dist_for_line_connection;
 
-                                corner c;
-                                c.setLines(&all_edges[*it_intersections_indices], &all_edges[*it_intersections_indices1]);
-                                c.isLineIntersection = true;
-                                c.pt = pt_intersect3D;
-                                possible_corners.push_back(c);
+                                if( could_be_intersection1 && could_be_intersection2)
+                                {
+                                    //change intersection for this new connection
+                                    if( (pinit-pt_intersect2D).norm() < (pfin-pt_intersect2D).norm())
+                                        all_edges[*it_intersections_indices].new_start_pt = pt_intersect3D;
+                                    else
+                                        all_edges[*it_intersections_indices].new_end_pt = pt_intersect3D;
+
+                                    if( (pinit_other-pt_intersect2D).norm() < (pfin_other-pt_intersect2D).norm())
+                                        all_edges[*it_intersections_indices1].new_start_pt = pt_intersect3D;
+                                    else
+                                        all_edges[*it_intersections_indices1].new_end_pt = pt_intersect3D;
+
+                                    corner c;
+                                    c.setLines(&all_edges[*it_intersections_indices], &all_edges[*it_intersections_indices1]);
+                                    c.isLineIntersection = true;
+                                    c.pt = pt_intersect3D;
+                                    possible_corners.push_back(c);
+                                }
+                                else // this can not be a connection I remove the shortest line
+                                {
+                                    std::vector<intersection> all_edges_temp (all_edges.size()-1);
+                                    if(all_edges[*it_intersections_indices].length < all_edges[*it_intersections_indices1].length)
+                                    {
+                                        int n = 0;
+                                        for (int k = 0 ; k < all_edges.size(); ++k)
+                                        {
+                                            if(k != *it_intersections_indices)
+                                            {
+                                                all_edges_temp[n] = all_edges[k];
+                                                ++n;
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        int n = 0;
+                                        for (int k = 0 ; k < all_edges.size(); ++k)
+                                        {
+                                            if(k != *it_intersections_indices1)
+                                            {
+                                                all_edges_temp[n] = all_edges[k];
+                                                ++n;
+                                            }
+                                        }
+                                    }
+
+                                }
                             }
                         }
                     }
@@ -2667,7 +2773,7 @@ void manager::projectOnPlane(intersection& inter, Eigen::Affine3d rot, Eigen::Ve
 }
 
 
-bool manager::DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal)
+bool manager::DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal, std::vector<Eigen::Vector3d>& vector_crossed)
 {
     if((jonction[1]-jonction[0]).norm()>0.001)
     {
@@ -2694,10 +2800,10 @@ bool manager::DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<s
                     vec_tested[0] = poly[i];
                     vec_tested[1] = poly[i+1];
 
-                    if( (jonction[0]-vec_tested[1]).norm() > epsilon && (jonction[0]-vec_tested[0]).norm() > epsilon)
+                    if(DoesCross(rot, jonction, vec_tested))
                     {
-                        if(DoesCross(rot, jonction, vec_tested))
-                            return true;
+                        vector_crossed = vec_tested;
+                        return true;
                     }
                 }
             }
@@ -2706,7 +2812,7 @@ bool manager::DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<s
     return false;
 }
 
-bool manager::DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p)
+bool manager::DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p, std::vector<Eigen::Vector3d>& vector_crossed)
 {
     if((jonction[1]-jonction[0]).norm()>0.001)
     {
@@ -2730,10 +2836,10 @@ bool manager::DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p)
                 vec_tested[0] = all_edges[*it_intersections_indices].new_start_pt;
                 vec_tested[1] = all_edges[*it_intersections_indices].new_end_pt;
 
-                if( (jonction[0]-vec_tested[1]).norm() > epsilon && (jonction[0]-vec_tested[0] ).norm() > epsilon)
+                if(DoesCross(rot, jonction, vec_tested))
                 {
-                    if(DoesCross(rot, jonction, vec_tested))
-                        return true;
+                    vector_crossed = vec_tested;
+                    return true;
                 }
             }
         }
@@ -2743,34 +2849,42 @@ bool manager::DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p)
 
 bool manager::DoesCross(Eigen::Affine3d rot, std::vector<Eigen::Vector3d> jonction, std::vector<Eigen::Vector3d> vec_tested)
 {
-    Eigen::Vector3d temp = rot.linear() * jonction[0];
-    Eigen::Vector2d pinit = {temp(0), temp(1)};
-    temp = rot.linear() * jonction[1];
-    Eigen::Vector2d pfin = {temp(0), temp(1)};
-    Eigen::Vector2d tangente2D = pfin - pinit;
-    tangente2D /= tangente2D.norm();
-    Eigen::Vector2d normal2D = pfin - pfin.dot(tangente2D) * tangente2D;
-    normal2D /= normal2D.norm();
-    double distance2D = pfin.dot(normal2D);
+    bool same_extremity = (jonction[0] - vec_tested[0]).norm() < epsilon;
+    same_extremity = same_extremity || ( (jonction[0] - vec_tested[1]).norm() < epsilon );
+    same_extremity = same_extremity || ( (jonction[1] - vec_tested[0]).norm() < epsilon );
+    same_extremity = same_extremity || ( (jonction[1] - vec_tested[1]).norm() < epsilon );
 
-    Eigen::Vector2d pinit_temp = {(rot.linear() * vec_tested[0])(0), (rot.linear() * vec_tested[0])(1)};
-    Eigen::Vector2d pfin_temp = {(rot.linear() * vec_tested[1])(0), (rot.linear() * vec_tested[1])(1)};
-    Eigen::Vector2d tangente2D_temp = pfin_temp-pinit_temp;
-    tangente2D_temp /= tangente2D_temp.norm();
-    Eigen::Vector2d normal2D_temp = pfin_temp - pfin_temp.dot(tangente2D_temp) * tangente2D_temp;
-    normal2D_temp /= normal2D_temp.norm();
-    double distance2D_temp = pfin_temp.dot(normal2D_temp);
-
-    Eigen::Matrix2d N ;
-    N.row(0) = normal2D_temp;
-    N.row(1) = normal2D;
-    Eigen::Vector2d d = {distance2D_temp, distance2D};
-    Eigen::Vector2d pt_intersect2D = N.colPivHouseholderQr().solve(d);
-    if((pt_intersect2D-pinit).dot(tangente2D)>0 && (pt_intersect2D-pfin).dot(tangente2D)<0 && (pt_intersect2D-pinit_temp).dot(tangente2D_temp)>0 && (pt_intersect2D-pfin_temp).dot(tangente2D_temp)<0)
+    if(!same_extremity)
     {
-        std::cout<<"line between: "<<jonction[1].transpose()<<" and "<<jonction[0].transpose()<<std::endl;
-        std::cout<<"\t crosses line between: "<<vec_tested[1].transpose()<<" and "<<vec_tested[0].transpose()<<std::endl;
-        return true;
+        Eigen::Vector3d temp = rot.linear() * jonction[0];
+        Eigen::Vector2d pinit = {temp(0), temp(1)};
+        temp = rot.linear() * jonction[1];
+        Eigen::Vector2d pfin = {temp(0), temp(1)};
+        Eigen::Vector2d tangente2D = pfin - pinit;
+        tangente2D /= tangente2D.norm();
+        Eigen::Vector2d normal2D = pfin - pfin.dot(tangente2D) * tangente2D;
+        normal2D /= normal2D.norm();
+        double distance2D = pfin.dot(normal2D);
+
+        Eigen::Vector2d pinit_temp = {(rot.linear() * vec_tested[0])(0), (rot.linear() * vec_tested[0])(1)};
+        Eigen::Vector2d pfin_temp = {(rot.linear() * vec_tested[1])(0), (rot.linear() * vec_tested[1])(1)};
+        Eigen::Vector2d tangente2D_temp = pfin_temp-pinit_temp;
+        tangente2D_temp /= tangente2D_temp.norm();
+        Eigen::Vector2d normal2D_temp = pfin_temp - pfin_temp.dot(tangente2D_temp) * tangente2D_temp;
+        normal2D_temp /= normal2D_temp.norm();
+        double distance2D_temp = pfin_temp.dot(normal2D_temp);
+
+        Eigen::Matrix2d N ;
+        N.row(0) = normal2D_temp;
+        N.row(1) = normal2D;
+        Eigen::Vector2d d = {distance2D_temp, distance2D};
+        Eigen::Vector2d pt_intersect2D = N.colPivHouseholderQr().solve(d);
+        if((pt_intersect2D-pinit).dot(tangente2D)>0 && (pt_intersect2D-pfin).dot(tangente2D)<0 && (pt_intersect2D-pinit_temp).dot(tangente2D_temp)>0 && (pt_intersect2D-pfin_temp).dot(tangente2D_temp)<0)
+        {
+            std::cout<<"line between: "<<jonction[1].transpose()<<" and "<<jonction[0].transpose()<<std::endl;
+            std::cout<<"\t crosses line between: "<<vec_tested[1].transpose()<<" and "<<vec_tested[0].transpose()<<std::endl;
+            return true;
+        }
     }
     return false;
 }
@@ -2919,26 +3033,34 @@ void manager::clean_edges()
                 all_edges_temp.push_back(all_edges[k]);
             else if(all_edges[k].start_changed || all_edges[k].end_changed)     //start or end has not changed and the other has
             {
-                Eigen::Vector3d uniq_connexion;
-                if(all_edges[k].start_changed && !all_edges[k].end_changed)
-                    uniq_connexion = all_edges[k].new_start_pt;
-                else if(!all_edges[k].start_changed && all_edges[k].end_changed)
-                    uniq_connexion = all_edges[k].new_end_pt;
-
-                for(int l = 0; l<all_edges.size(); ++l)
+                if(!( (all_edges[k].isObstruction || all_edges[k].isOpening) && all_edges[k].length < 0.1))
                 {
-                    if(all_edges[l].isLine && k != l && (all_edges[l].start_changed && all_edges[l].end_changed))
+                    Eigen::Vector3d uniq_connexion;
+                    if(all_edges[k].start_changed && !all_edges[k].end_changed)
+                        uniq_connexion = all_edges[k].new_start_pt;
+                    else if(!all_edges[k].start_changed && all_edges[k].end_changed)
+                        uniq_connexion = all_edges[k].new_end_pt;
+
+                    for(int l = 0; l<all_edges.size(); ++l)
                     {
-                        if( (all_edges[l].new_start_pt-uniq_connexion).norm()<epsilon || (all_edges[l].new_end_pt-uniq_connexion).norm()<epsilon)
-                            shared_corner = true;
+                        if(all_edges[l].isLine && k != l)
+                        {
+                            if( (all_edges[l].new_start_pt-uniq_connexion).norm()<epsilon || (all_edges[l].new_end_pt-uniq_connexion).norm()<epsilon) //line l connected
+                            {
+                                if(all_edges[l].start_changed && all_edges[l].end_changed || all_edges[l].length > 1.0 || all_edges[k].length > 1.0) // either connected to other things either long enough
+                                        shared_corner = true;
+                            }
+                        }
+                        if(shared_corner)
+                            break;
                     }
                     if(shared_corner)
-                        break;
+                        all_edges_temp.push_back(all_edges[k]);
+                    else
+                        edges_removed.push_back(all_edges[k]); // 2 lines not connected
                 }
-                if(shared_corner)
-                    all_edges_temp.push_back(all_edges[k]);
                 else
-                    edges_removed.push_back(all_edges[k]); // 2 lines not connected
+                    edges_removed.push_back(all_edges[k]); // 1 obstruction line only connected once and less than 10cm
             }
             else
                 edges_removed.push_back(all_edges[k]); //line not connected
