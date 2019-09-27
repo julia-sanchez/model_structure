@@ -21,9 +21,10 @@ void corner::computePointFromLines()
     Eigen::Affine3d rot_inv = Eigen::Affine3d::Identity();
 
     float angle = acos(-p->normal(2));   //angle between normal and z axis [0, pi]
-    Eigen::Vector3d axis;
+
     if(angle>eps)
     {
+        Eigen::Vector3d axis;
         axis = (-p->normal).cross(Eigen::Vector3d(0,0,1)); // rotation axis to align normal onto z axis
         axis /= axis.norm();
         rot.rotate( Eigen::AngleAxisd(angle, axis) );

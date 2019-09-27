@@ -1,4 +1,4 @@
-manager::manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int Nc, double pa, double ta, int mc, Eigen::Vector3d ra, Eigen::Vector3d aip)
+manager::manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int Nc, double pa, double ta, int mc, Eigen::Vector3d ra, Eigen::Vector3d aip, double tpb)
 {
     cloud = c;
     man3D.setInputCloud(c);
@@ -22,6 +22,103 @@ manager::manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int 
     rot_axis = ra;
     axis_init_phi = aip;
     seeds_pixels = Eigen::MatrixXi::Zero(Nrow, Ncol);
+    threshold_plane_belonging_ = tpb;
+}
+
+void manager::cleanImage()
+{
+    int rad = 1;
+    for(int i = 0; i < Nrow; ++i)
+    {
+        for(int j = 0; j < Ncol; ++j)
+        {
+            if(image_clusterized_indices(i,j) != 0 && image_clusterized_indices(i,j) != planes.size() + 1)
+            {
+                int ref_plane = image_clusterized_indices(i,j);
+                std::vector<int> color_neigh(planes.size()+2);
+
+                std::vector<std::pair<int,int>> neigh = getNeighPixels(std::make_pair(i,j), rad);
+
+                for(int  k = 0 ; k < neigh.size(); ++k)
+                        ++color_neigh[image_clusterized_indices(neigh[k].first, neigh[k].second)];
+
+                if(color_neigh[ref_plane]<3)
+                {
+                    auto it_found_pixel = std::find(planes[ref_plane-1].pixels.begin(), planes[ref_plane-1].pixels.end(), std::make_pair(i,j));
+                    if(it_found_pixel != planes[ref_plane-1].pixels.end())
+                    {
+                        int idx_to_erase = std::distance(planes[ref_plane-1].pixels.begin(), it_found_pixel);
+                        int new_color = std::distance(color_neigh.begin(), std::max_element(color_neigh.begin(), color_neigh.end()));
+                        if(new_color != 0 && new_color != planes.size() + 1)
+                        {
+                            planes[new_color-1].appendPoint(planes[ref_plane-1].pts[idx_to_erase]);
+                            planes[new_color-1].appendPixel(planes[ref_plane-1].pixels[idx_to_erase]);
+                        }
+
+                        planes[ref_plane-1].pixels.erase( planes[ref_plane-1].pixels.begin() + idx_to_erase);
+                        planes[ref_plane-1].pts.erase( planes[ref_plane-1].pts.begin() + idx_to_erase);
+                    }
+                }
+            }
+        }
+    }
+}
+
+std::vector<std::pair<int,int>> manager::getNeighPixels(std::pair<int,int> pa, int rad)
+{
+    std::vector<std::pair<int,int>> neigh;
+
+    int i = pa.first;
+    int j = pa.second;
+
+    int min_ki = std::max(i-rad, 0);
+    int max_ki = std::min(i+rad, Nrow-1);
+    int min_kj = std::max(j-rad, lim_theta.first);
+    int max_kj = std::min(j+rad, lim_theta.second);
+
+    for(int ki = min_ki; ki<=max_ki; ++ki)
+    {
+        for(int kj = min_kj; kj<=max_kj; ++kj)
+        {
+            if(!(i == ki && j == kj))
+                neigh.push_back(std::make_pair(ki,kj));
+        }
+    }
+
+    if(i<rad)
+    {
+        min_ki = Nrow - rad + i;
+        max_ki = Nrow-1;
+        min_kj = std::max(j-rad, lim_theta.first);
+        max_kj = std::min(j+rad, lim_theta.second);
+
+        for(int ki = min_ki; ki<=max_ki; ++ki)
+        {
+            for(int kj = min_kj; kj<=max_kj; ++kj)
+            {
+                if(!(i == ki && j == kj))
+                    neigh.push_back(std::make_pair(ki,kj));
+            }
+        }
+    }
+
+    if(i+rad>Nrow)
+    {
+        min_ki = 0;
+        max_ki = rad + (Nrow - 1 - i);
+        min_kj = std::max(j-rad, lim_theta.first);
+        max_kj = std::min(j+rad, lim_theta.second);
+
+        for(int ki = min_ki; ki<=max_ki; ++ki)
+        {
+            for(int kj = min_kj; kj<=max_kj; ++kj)
+            {
+                if(!(i == ki && j == kj))
+                    neigh.push_back(std::make_pair(ki,kj));
+            }
+        }
+    }
+    return neigh;
 }
 
 std::pair<int,int> pt2XY(Eigen::Vector3d pt, float delta_phi, float delta_theta, Eigen::Vector3d rot_axis, Eigen::Vector3d axis_init_phi)
@@ -148,7 +245,7 @@ bool manager::isSeed(std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eig
     for(int i = 0; i< neigh.size(); ++i)
     {
         double dist = abs((it->second.first-neigh[i]->second.first).dot(it->second.second));
-        if( dist > thresh_neigh_for_seed || abs(neigh[i]->second.second.dot(it->second.second))<normals_similarity_threshold_to_select_seed)
+        if( dist > thresh_neigh_for_seed || abs(neigh[i]->second.second.dot(it->second.second)) < normals_similarity_threshold_to_select_seed)
             return false;
     }
 
@@ -171,7 +268,7 @@ bool manager::isSeed(std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eig
     return true;
 }
 
-void manager::searchClusters(double thresh_plane_belonging, int radius, double thresh_neigh_for_seed) // create the vector of "regions" in which there is a vector of points with their associated mode
+void manager::searchClusters(int radius, double thresh_neigh_for_seed) // create the vector of "regions" in which there is a vector of points with their associated mode
 {
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed_seed = Eigen::MatrixXi::Zero(Nrow, Ncol).cast<bool>();
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed_growing = Eigen::MatrixXi::Zero(Nrow, Ncol).cast<bool>();
@@ -214,7 +311,7 @@ void manager::searchClusters(double thresh_plane_belonging, int radius, double t
                                 neighbors[k]->second.second /= neighbors[k]->second.second.norm();
                                 it->second.second /= it->second.second.norm();
 
-                                if(abs((neighbors[k]->second.first-it->second.first).dot(it->second.second)) < thresh_plane_belonging)// && acos(neighbors[k]->second.dot(it->second)/(neighbors[k]->second.norm()*it->second.norm())) < thresh_angle )
+                                if(abs((neighbors[k]->second.first-it->second.first).dot(it->second.second)) < threshold_plane_belonging_)// && acos(neighbors[k]->second.dot(it->second)/(neighbors[k]->second.norm()*it->second.norm())) < thresh_angle )
                                 {
                                     processed_growing(neighbors[k]->first.first, neighbors[k]->first.second) = true;
                                     region.push_back(neighbors[k]);
@@ -406,11 +503,10 @@ void manager::cleanClusters() // from regions, keep all points in XY2Plane_idx a
                         else
                             most_reliable_normal = planes[j].normal;
 
-                        if(acos(planes[group_of_planes[idx_group_of_planes]].normal.dot(planes[j].normal))<10*M_PI/180 && abs((planes[group_of_planes[idx_group_of_planes]].mean_point_-planes[j].mean_point_).dot(most_reliable_normal))<min_dist_planes) // if planes similar...
+                        if(acos(planes[group_of_planes[idx_group_of_planes]].normal.dot(planes[j].normal))<10*M_PI/180 && abs((planes[group_of_planes[idx_group_of_planes]].mean_point_-planes[j].mean_point_).dot(most_reliable_normal)) < 0.1) // if planes similar...
                         {
                             std::cout<<"lookalike regions : "<<group_of_planes[idx_group_of_planes]<<" "<<j<<std::endl;
-//                            std::cout<<" \t normal diff : "<<acos(planes[group_of_planes[idx_group_of_planes]].normal.dot(planes[j].normal))<<std::endl;
-                            if(share_points(group_of_planes[idx_group_of_planes],j)) //if planes share points)
+                            if(share_points(group_of_planes[idx_group_of_planes],j)) //(if planes share points)
                             {
                                 group_of_planes.push_back(j);
                                 treated_it.insert(j);
@@ -449,6 +545,8 @@ void manager::cleanClusters() // from regions, keep all points in XY2Plane_idx a
     for(int k = 0; k < planes.size(); ++k)
         planes[k].computeNormal();
 
+    clusterized2Image();
+
     //gather spatially close planes
 
     for(int i = 0; i < planes.size()-1; ++i)
@@ -459,14 +557,12 @@ void manager::cleanClusters() // from regions, keep all points in XY2Plane_idx a
             {
                 if(to_erase_idx.find(j) == to_erase_idx.end())
                 {
-                    Eigen::Vector3d mean_normal = (planes[i].normal + planes[j].normal);
-                    mean_normal /= mean_normal.norm();
-
-                    if(acos(planes[i].normal.dot(planes[j].normal))<10*M_PI/180 && abs((planes[i].mean_point_-planes[j].mean_point_).dot(mean_normal))<min_dist_planes) // if planes similar...
+                    if(acos(planes[i].normal.dot(planes[j].normal))<10*M_PI/180 && abs(planes[i].distance-planes[j].distance) < min_dist_planes) // if planes similar...
                     {
                         std::cout<<"lookalike regions : "<<i<<" "<<j<<std::endl;
-                        if(arePlanesClose(planes[i], planes[j]))
+                        if(arePlanesClose(i,j))
                         {
+                            std::cout<<"yes, planes are close"<<std::endl<<std::endl;
                             for(int l = 0; l < planes[j].pts.size(); ++l)
                             {
                                 planes[i].appendPoint(planes[j].pts[l]); //gather points
@@ -492,68 +588,78 @@ void manager::cleanClusters() // from regions, keep all points in XY2Plane_idx a
     std::cout<<"Stop gathering superimposed planes "<<std::endl<<std::endl;
 
     //------------------------------------------------------------------------------------------------------------------
-    //ultimate cleaning now I have corrected plane features to remove too far points
-    auto it_to_erase = to_erase_idx.begin();
-    std::vector<std::pair<int,int>> pixels_temp;
-    std::vector<Eigen::Vector3d> points_temp;
-    for(int i = 0; i<planes.size(); ++i)
+    //ultimate cleaning now I have corrected plane features to remove too far points + to erase planes wich are gathered
+    if(to_erase_idx.size()>0)
     {
-        points_temp.clear();
-        pixels_temp.clear();
-        if(i != *it_to_erase)
+        auto it_to_erase = to_erase_idx.begin();
+        std::vector<std::pair<int,int>> pixels_temp;
+        std::vector<Eigen::Vector3d> points_temp;
+        for(int i = 0; i<planes.size(); ++i)
         {
-            for (int k = 0; k<planes[i].pts.size(); ++k)
+            points_temp.clear();
+            pixels_temp.clear();
+            if(i != *it_to_erase)
             {
-                if(abs(abs(planes[i].pts[k].dot(planes[i].normal))-planes[i].distance) < max_plane_distance)
+                for (int k = 0; k<planes[i].pts.size(); ++k)
                 {
-                    points_temp.push_back(planes[i].pts[k]);
-                    pixels_temp.push_back(planes[i].pixels[k]);
+                    if(abs(abs(planes[i].pts[k].dot(planes[i].normal))-planes[i].distance) < max_planes_distance)
+                    {
+                        points_temp.push_back(planes[i].pts[k]);
+                        pixels_temp.push_back(planes[i].pixels[k]);
+                    }
                 }
+                planes[i].pts = points_temp;
+                planes[i].pixels = pixels_temp;
             }
-            planes[i].pts = points_temp;
-            planes[i].pixels = pixels_temp;
-        }
-        else
-        {
-            ++it_to_erase;
-            if(it_to_erase == to_erase_idx.end())
-                --it_to_erase;
+            else
+            {
+                ++it_to_erase;
+                if(it_to_erase == to_erase_idx.end())
+                    --it_to_erase;
+            }
         }
     }
 
+    //remove too little planes ------------------------------------------------------------------------------------------------------
     for(int i = 0; i<planes.size(); ++i)
     {
         if(planes[i].pts.size() < min_number_of_pixels)
             to_erase_idx.insert(i);
     }
 
-    std::vector<plane> planes_temp;
-    std::vector<std::pair<std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator>, Eigen::Vector3d>> regions_temp;
-    it_to_erase = to_erase_idx.begin();
-
-    for(int i = 0; i<planes.size(); ++i)
+    //remove all planes in to_erase ------------------------------------------------------------------------------------------------------
+    if(to_erase_idx.size()>0)
     {
-        std::cout<<"region "<<i<<" ";
-        if(i!=*it_to_erase)
+        auto it_to_erase = to_erase_idx.begin();
+        std::vector<plane> planes_temp;
+        std::vector<std::pair<std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vector3d>>::iterator>, Eigen::Vector3d>> regions_temp;
+
+        for(int i = 0; i<planes.size(); ++i)
         {
-            planes_temp.push_back(planes[i]);
-            regions_temp.push_back(regions[i]);
-            std::cout<<" is added as plane n°"<<(planes_temp.size()-1)<<std::endl<<std::endl;
+            if(i!=*it_to_erase)
+            {
+                planes_temp.push_back(planes[i]);
+                regions_temp.push_back(regions[i]);
+            }
+            else
+            {
+                ++it_to_erase;
+                if(it_to_erase == to_erase_idx.end())
+                    --it_to_erase;
+            }
         }
-        else
-        {
-            ++it_to_erase;
-            if(it_to_erase == to_erase_idx.end())
-                --it_to_erase;
-            std::cout<<" is erased"<<(planes_temp.size()-1)<<std::endl<<std::endl;
-        }
+
+        planes = planes_temp;
+        regions = regions_temp;
     }
 
-    planes = planes_temp;
-    regions = regions_temp;
+    //-----------------------------------------------------------------------------------------------------
 
     for(int i = 0; i<planes.size(); ++i)
         planes[i].index = i;
+
+    clusterized2Image();
+    cleanImage();
 
     processed_planes = Eigen::MatrixXi::Zero(planes.size()+1, planes.size()+1);
     //------------------------------------------------------------------------------------------------------------------
@@ -571,15 +677,64 @@ void manager::cleanClusters() // from regions, keep all points in XY2Plane_idx a
 }
 
 
-bool manager::arePlanesClose(plane pi, plane pj)
+bool manager::arePlanesClose(int a, int b)
 {
     std::cout<<"Are planes close?"<<std::endl<<std::endl;
-    for (int i = 0; i<pi.pixels.size(); ++i)
+    std::vector<std::pair<int,int>> pixels_temp;
+    std::vector<int> ref; // to link neighbor and initial pixel index
+
+    for (int idx_pixel = 0; idx_pixel<planes[a].pixels.size(); ++idx_pixel)
     {
-        for (int j = 0; j < pj.pixels.size(); ++j)
+        int min_i = std::max(planes[a].pixels[idx_pixel].first-1,0);
+        int max_i = std::min(planes[a].pixels[idx_pixel].first+1,Nrow-1);
+        int min_j = std::max(planes[a].pixels[idx_pixel].second-1,0);
+        int max_j = std::min(planes[a].pixels[idx_pixel].second+1,Ncol-1);
+
+        for(int ki = min_i; ki <= max_i; ++ki)
         {
-            if(sqrt(pow(pi.pixels[i].first-pj.pixels[j].first,2) + pow(pi.pixels[i].second-pj.pixels[j].second,2)) <= max_dist_between_pixels_in_line)
-                return true;
+            for(int kj = min_j; kj <= max_j; ++kj)
+            {
+                if(image_clusterized_indices(ki,kj) == b+1)
+                    return true;
+                else if (image_clusterized_indices(ki,kj) == 0 || image_clusterized_indices(ki,kj) == planes.size()+1) // if empty or non planar object
+                {
+                    pixels_temp.push_back(std::make_pair(ki,kj));
+                    ref.push_back(idx_pixel); //associate neighbor and reference pixel idx
+                }
+            }
+        }
+    }
+
+    Eigen::MatrixXi processed = Eigen::MatrixXi:: Zero(Nrow, Ncol);
+
+    for (int idx_pixel = 0; idx_pixel<pixels_temp.size(); ++idx_pixel)
+    {
+        if(!processed(pixels_temp[idx_pixel].first, pixels_temp[idx_pixel].second))
+        {
+            processed(pixels_temp[idx_pixel].first, pixels_temp[idx_pixel].second) = 1;
+            int min_i = std::max(pixels_temp[idx_pixel].first-1,0);
+            int max_i = std::min(pixels_temp[idx_pixel].first+1,Nrow-1);
+            int min_j = std::max(pixels_temp[idx_pixel].second-1,0);
+            int max_j = std::min(pixels_temp[idx_pixel].second+1,Ncol-1);
+
+            for(int ki = min_i; ki <= max_i; ++ki)
+            {
+                for(int kj = min_j; kj <= max_j; ++kj)
+                {
+                    if(image_clusterized_indices(ki,kj) == b+1)
+                        return true;
+                    else if (image_clusterized_indices(ki,kj) == 0 || image_clusterized_indices(ki,kj) == planes.size()+1)
+                    {
+                        int reference_idx = ref[idx_pixel];
+                        std::pair<int,int> ref_pix = planes[a].pixels[reference_idx];
+                        if(sqrt(pow(ref_pix.first - ki,2) + pow(ref_pix.second - kj,2)) < 10) // if black or white pixel not too far from its ref
+                        {
+                            pixels_temp.push_back(std::make_pair(ki,kj));
+                            ref.push_back(reference_idx);
+                        }
+                    }
+                }
+            }
         }
     }
     return false;
@@ -604,7 +759,7 @@ std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vecto
     int inity = std::max(it->first.second-rad, 0);
     int finity = std::min(it->first.second+rad, Ncol-1);
 
-    for(int i = initx; i != finitx; ++i)
+    for(int i = initx; i != finitx+1; ++i)
     {
         if(i>=Nrow)
             i = -1;
@@ -618,6 +773,7 @@ std::vector<std::map<std::pair<int,int>, std::pair<Eigen::Vector3d, Eigen::Vecto
             }
         }
     }
+//    std::cout<<"size of neighborhood of current point : "<<neighbors.size()<<std::endl<<std::endl;
     return neighbors;
 }
 
@@ -1809,7 +1965,7 @@ void manager::computeTheoriticalLinesIntersections()
                     {
                         if(abs(all_edges[*it_edge].tangente.dot(all_edges[*it_edge_other].tangente)) < not_parallel_dot_threshold)
                         {
-                            std::cout<<"trying lines intersection between : "<<*it_edge<<" and "<<*it_edge_other<<std::endl;
+//                            std::cout<<"trying lines intersection between : "<<*it_edge<<" and "<<*it_edge_other<<std::endl;
                             corner c;
                             c.setLines(&all_edges[*it_edge], &all_edges[*it_edge_other]);
                             c.computePointFromLines(); // compute intersection point between lines on studied plane
@@ -1975,7 +2131,7 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
                 inter1.max_pixel_diff_start = start_diff_pix1;
                 inter1.max_spatial_diff_start  = start_diff_spat1;
                 inter1.start_changed = true;
-                std::cout<<"\t start1 replaced : "<<start_diff_spat1<<"    "<<start_diff_pix1<<std::endl;
+//                std::cout<<"\t start1 replaced : "<<start_diff_spat1<<"    "<<start_diff_pix1<<std::endl;
             }
 
             if(start2_replaced)
@@ -1984,7 +2140,7 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
                 inter2.max_pixel_diff_start = start_diff_pix2;
                 inter2.max_spatial_diff_start  = start_diff_spat2;
                 inter2.start_changed = true;
-                std::cout<<"\t start2 replaced : "<<start_diff_spat2<<"    "<<start_diff_pix2<<std::endl;
+//                std::cout<<"\t start2 replaced : "<<start_diff_spat2<<"    "<<start_diff_pix2<<std::endl;
             }
             corner_can_be_used = true;
         }
@@ -2004,7 +2160,7 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
                 inter1.max_pixel_diff_end = end_diff_pix1;
                 inter1.max_spatial_diff_end = end_diff_spat1;
                 inter1.end_changed = true;
-                std::cout<<"\t end1 replaced : "<<end_diff_spat1<<"    "<<end_diff_pix1<<std::endl;
+//                std::cout<<"\t end1 replaced : "<<end_diff_spat1<<"    "<<end_diff_pix1<<std::endl;
             }
 
             if(start2_replaced)
@@ -2013,7 +2169,7 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
                 inter2.max_pixel_diff_start = start_diff_pix2;
                 inter2.max_spatial_diff_start  = start_diff_spat2;
                 inter2.start_changed = true;
-                std::cout<<"\t start2 replaced : "<<start_diff_spat2<<"    "<<start_diff_pix2<<std::endl;
+//                std::cout<<"\t start2 replaced : "<<start_diff_spat2<<"    "<<start_diff_pix2<<std::endl;
             }
             corner_can_be_used = true;
         }
@@ -2033,7 +2189,7 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
                 inter1.max_pixel_diff_start = start_diff_pix1;
                 inter1.max_spatial_diff_start  = start_diff_spat1;
                 inter1.start_changed = true;
-                std::cout<<"\t start1 replaced : "<<start_diff_spat1<<"    "<<start_diff_pix1<<std::endl;
+//                std::cout<<"\t start1 replaced : "<<start_diff_spat1<<"    "<<start_diff_pix1<<std::endl;
             }
 
             if(end2_replaced)
@@ -2042,7 +2198,7 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
                 inter2.max_pixel_diff_end = end_diff_pix2;
                 inter2.max_spatial_diff_end  = end_diff_spat2;
                 inter2.end_changed = true;
-                std::cout<<"\t end2 replaced : "<<end_diff_spat2<<"    "<<end_diff_pix2<<std::endl;
+//                std::cout<<"\t end2 replaced : "<<end_diff_spat2<<"    "<<end_diff_pix2<<std::endl;
             }
             corner_can_be_used = true;
         }
@@ -2062,7 +2218,7 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
                 inter1.max_pixel_diff_end = end_diff_pix1;
                 inter1.max_spatial_diff_end = end_diff_spat1;
                 inter1.end_changed = true;
-                std::cout<<"\t end1 replaced : "<<end_diff_spat1<<"    "<<end_diff_pix1<<std::endl;
+//                std::cout<<"\t end1 replaced : "<<end_diff_spat1<<"    "<<end_diff_pix1<<std::endl;
             }
 
             if(end2_replaced)
@@ -2071,7 +2227,7 @@ bool manager::replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vec
                 inter2.max_pixel_diff_end = end_diff_pix2;
                 inter2.max_spatial_diff_end  = end_diff_spat2;
                 inter2.end_changed = true;
-                std::cout<<"\t end2 replaced : "<<end_diff_spat2<<"    "<<end_diff_pix2<<std::endl;
+//                std::cout<<"\t end2 replaced : "<<end_diff_spat2<<"    "<<end_diff_pix2<<std::endl;
             }
             corner_can_be_used = true;
         }
@@ -2322,6 +2478,8 @@ void manager::detect_margin()
         std::cout<<"min_theta : "<<min_theta<<"   max_theta : "<<max_theta<<std::endl<<std::endl;
         lim_theta = std::make_pair(min_theta, max_theta);
     }
+    else
+        std::cout<<"min_theta : "<<lim_theta.first<<"   max_theta : "<<lim_theta.second<<std::endl<<std::endl;
 }
 
 void manager::order_polygone_corners()
@@ -3020,42 +3178,47 @@ void manager::clean_edges()
         {
             all_edges[k].length = (all_edges[k].new_start_pt - all_edges[k].new_end_pt).norm();
             bool shared_corner = false;
-            if((all_edges[k].start_changed && all_edges[k].end_changed))        //start and end have changed
-                all_edges_temp.push_back(all_edges[k]);
-            else if(all_edges[k].start_changed || all_edges[k].end_changed)     //start or end has not changed and the other has
+            if(all_edges[k].length<0.5)
             {
-                if( all_edges[k].isConnection || all_edges[k].length > 0.1)
+                if((all_edges[k].start_changed && all_edges[k].end_changed))        //start and end have changed
+                    all_edges_temp.push_back(all_edges[k]);
+                else if(all_edges[k].start_changed || all_edges[k].end_changed)     //start or end has not changed and the other has
                 {
-                    Eigen::Vector3d uniq_connexion;
-                    if(all_edges[k].start_changed && !all_edges[k].end_changed)
-                        uniq_connexion = all_edges[k].new_start_pt;
-                    else if(!all_edges[k].start_changed && all_edges[k].end_changed)
-                        uniq_connexion = all_edges[k].new_end_pt;
-
-                    for(int l = 0; l<all_edges.size(); ++l)
+                    if( all_edges[k].isConnection || all_edges[k].length > 0.1)
                     {
-                        if(all_edges[l].isLine && k != l)
+                        Eigen::Vector3d uniq_connexion;
+                        if(all_edges[k].start_changed && !all_edges[k].end_changed)
+                            uniq_connexion = all_edges[k].new_start_pt;
+                        else if(!all_edges[k].start_changed && all_edges[k].end_changed)
+                            uniq_connexion = all_edges[k].new_end_pt;
+
+                        for(int l = 0; l<all_edges.size(); ++l)
                         {
-                            all_edges[l].length = (all_edges[l].new_start_pt - all_edges[l].new_end_pt).norm();
-                            if( (all_edges[l].new_start_pt-uniq_connexion).norm()<epsilon || (all_edges[l].new_end_pt-uniq_connexion).norm()<epsilon) //line l connected
+                            if(all_edges[l].isLine && k != l)
                             {
-                                if(all_edges[l].start_changed && all_edges[l].end_changed || all_edges[l].length > 0.5 || all_edges[k].length > 0.5) // either connected to other things either long enough
-                                        shared_corner = true;
+                                all_edges[l].length = (all_edges[l].new_start_pt - all_edges[l].new_end_pt).norm();
+                                if( (all_edges[l].new_start_pt-uniq_connexion).norm()<epsilon || (all_edges[l].new_end_pt-uniq_connexion).norm()<epsilon) //line l connected
+                                {
+                                    if(all_edges[l].start_changed && all_edges[l].end_changed || all_edges[l].length > 0.5 || all_edges[k].length > 0.5) // either connected to other things either long enough
+                                            shared_corner = true;
+                                }
                             }
+                            if(shared_corner)
+                                break;
                         }
                         if(shared_corner)
-                            break;
+                            all_edges_temp.push_back(all_edges[k]);
+                        else
+                            edges_removed.push_back(all_edges[k]); // 2 lines not connected
                     }
-                    if(shared_corner)
-                        all_edges_temp.push_back(all_edges[k]);
                     else
-                        edges_removed.push_back(all_edges[k]); // 2 lines not connected
+                        edges_removed.push_back(all_edges[k]); // 1 obstruction line only connected once and less than 10cm
                 }
                 else
-                    edges_removed.push_back(all_edges[k]); // 1 obstruction line only connected once and less than 10cm
+                    edges_removed.push_back(all_edges[k]); //line not connected
             }
             else
-                edges_removed.push_back(all_edges[k]); //line not connected
+                all_edges_temp.push_back(all_edges[k]);
         }
         else
             all_edges_temp.push_back(all_edges[k]);

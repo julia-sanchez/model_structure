@@ -9,11 +9,17 @@ int vecMed(std::vector<int> vec);
 
 int main(int argc, char *argv[])
 {
-    if(argc != 10)
+    if(argc != 13)
     {
         std::cout<< "file_pcd radius_for_normals Nrow Ncol phi_app theta_app max_col thresh_plane_belonging radius_for_seed thresh_neigh_for_seed lim_theta hokuyo_ou_autre"<<std::endl<<std::endl;
         //                           0.15        1200 1200   360      180      500              0.15               5               0.03                0            0
         std::cout<< "on doit préciser si c'est hokuyo parce que le 0 n'est pas à l'origine du scanner (y)"<<std::endl<<std::endl;
+    }
+    else
+    {
+        for (int i = 0; i<sizeof(argv) / sizeof(char); ++i)
+            std::cout<<argv[i]<<"   ";
+        std::cout<<std::endl<<std::endl;
     }
 
     // LOAD AND PREPROCESS CLOUD-------------------------------------------------------------------------------------------------------------------------------------------------
@@ -83,7 +89,7 @@ int main(int argc, char *argv[])
         lim_theta.second = -1;
     }
 
-    manager man(cloud, Nrow, Ncol, phi_app, theta_app, max_col, rot_axis, axis_init_phi);
+    manager man(cloud, Nrow, Ncol, phi_app, theta_app, max_col, rot_axis, axis_init_phi, thresh_plane_belonging);
     man.setLimTheta(lim_theta);
     std::cout<< "Creating map"<<std::endl;
     man.initSearchCluster(normal_radius);
@@ -94,7 +100,7 @@ int main(int argc, char *argv[])
     std::cout<< "Stop creating map"<<std::endl<<std::endl;
 
     std::cout<<std::endl<< "Start searching clusters"<<std::endl;
-    man.searchClusters(thresh_plane_belonging, radius_for_seed, thresh_neigh_for_seed);
+    man.searchClusters(radius_for_seed, thresh_neigh_for_seed);
     std::cout<<std::endl<< "Stop searching clusters"<<std::endl<<std::endl;
 
     std::cout<<std::endl<< "Start cleaning clusters"<<std::endl;

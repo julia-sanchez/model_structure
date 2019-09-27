@@ -16,15 +16,15 @@
 #include "manager3D.h"
 #include "manager2D.h"
 
-const int min_number_of_pixels = 50;                                           // min number of pixel for a cluster to represent a plane
-const int pixel_radius_for_growing = 2;                                        // in case of soft obstruction over all the length  of the plane OR if black pixels (no return of laser bim)
-const double normals_similarity_threshold_for_cleaning_when_one_cluster = 0.9;   // when one point belongs to one unique cluster if normal too different erase
-const double normals_similarity_threshold_to_select_seed = 0.99;                 // comparison of seed normal to neighbors normals (seed must be on a precise zone of a plane)
-const double normals_similarity_to_add_neighbors = 0.9;  // (when the region growing goes on another wall on a band) check the neighborhs normals to be sure not to go too far
+const int min_number_of_pixels = 50;                                                // min number of pixel for a cluster to represent a plane
+const int pixel_radius_for_growing = 1;                                             // in case of soft obstruction over all the length  of the plane OR if black pixels (no return of laser bim)
+const double normals_similarity_threshold_for_cleaning_when_one_cluster = 0.9;      // when one point belongs to one unique cluster if normal too different erase
+const double normals_similarity_threshold_to_select_seed = 0.99;                    // comparison of seed normal to neighbors normals (seed must be on a precise zone of a plane)
+const double normals_similarity_to_add_neighbors = 0.9;                             // (when the region growing goes on another wall on a band) check the neighborhs normals to be sure not to go too far
 const double not_parallel_dot_threshold = 0.9961;
 const double angle_parallel_threshold = 15;
 const int incertainty_pixels = 6;
-const double min_dist_planes =0.1; //min distance between two parallel planes (if closer gathering)
+const double min_dist_planes =0.02;                                                  //min distance between two parallel planes (if closer gathering)
 const double min_polygone_angle = 10 * M_PI/180;
 
 class manager
@@ -36,9 +36,9 @@ public:
         inter_remaining.isObstruction = true;
         lim_theta.first = -1;
         lim_theta.second = -1;
-        seeds_pixels = Eigen::MatrixXi::Zero(Nrow, Ncol);
+        threshold_plane_belonging_ = 0.02;
     }
-    manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int Nc, double pa, double ta, int mc, Eigen::Vector3d ra, Eigen::Vector3d aip);
+    manager(typename pcl::PointCloud<pcl::PointNormal>::Ptr c, int Nr, int Nc, double pa, double ta, int mc, Eigen::Vector3d ra, Eigen::Vector3d aip, double tpb);
 
 //    ----------------------------------------------------------------------------------------------------------------------------------------
 
@@ -48,7 +48,7 @@ public:
     Eigen::MatrixXi getClusterizedIndicesImage(){return image_clusterized_indices;}
     std::vector<Eigen::MatrixXi, Eigen::aligned_allocator<Eigen::MatrixXi>> getInitImage(){return image_init;}
     void setMAxCol(int mc){max_col = mc;}
-    void searchClusters(double thresh_plane_belonging, int radius, double thresh_neigh_for_seed);
+    void searchClusters(int radius, double thresh_neigh_for_seed);
     void init2Image();
     void clusterized2Image();
     void cleanClusters();
@@ -66,6 +66,7 @@ public:
     Eigen::MatrixXi seeds_pixels;
     void order_polygone_corners();
     void export_mesh();
+    void cleanImage();
 
 private:
     pcl::PointCloud<pcl::PointNormal>::Ptr cloud;
@@ -114,7 +115,7 @@ private:
     bool replaceLim2(intersection& inter1, intersection& inter2, Eigen::Vector3d potential_corner_pt);
     bool replaceLim3(intersection& inter1, intersection& inter2, intersection& inter3, Eigen::Vector3d potential_corner_pt);
     void fill_edges();
-    bool arePlanesClose(plane pi, plane pj);
+    bool arePlanesClose(int a, int b);
     void actualizeChanged();
     bool DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal, std::vector<Eigen::Vector3d>& vector_crossed);
     bool isLineConnectedInPlane(int idx_line, int idx_plane, int end);
@@ -128,6 +129,8 @@ private:
     bool DoesCross(Eigen::Affine3d rot, std::vector<Eigen::Vector3d> jonction, std::vector<Eigen::Vector3d> vec_tested);
     bool DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p, std::vector<Eigen::Vector3d>& vector_crossed);
     void recoverEqualStartEnd();
+    double threshold_plane_belonging_;
+    std::vector<std::pair<int,int>> getNeighPixels(std::pair<int,int> pa, int rad);
 
 };
 

@@ -18,11 +18,10 @@
 class plane
 {
     public:
-        plane(){points.resize(0,3);}
+        plane(){;}
         Eigen::Vector3d normal; // oriented contrary to origin
         double distance;
         std::vector<Eigen::Vector3d> pts;
-        Eigen::MatrixXd points;
         Eigen::VectorXi points_boundary; // indices of points which belong to boundary
         std::vector<std::pair<int,int>> pixels;
         std::set<int> connected;
@@ -39,6 +38,7 @@ class plane
         Eigen::Vector3d mean_point_;
         std::vector<Eigen::Vector3d> ordered_corners;
         std::vector<std::vector<Eigen::Vector3d>> memorized_corners;
+        void computeMeanPoint();
 
     private:
 };

@@ -184,6 +184,7 @@ void intersection::computeTheoriticalLineFeaturesObstruction(std::multimap<std::
         other_pixels.clear();
         indices_sister.clear();
         indices_self.clear();
+        std::cout<<"exit computing obstruction not enough corresponding points ref plane ("<<indices_pixels_of_plane_ref.size()<<" points)"<<std::endl;
         return;
     }
     indices_self.clear();
@@ -231,7 +232,7 @@ void intersection::computeTheoriticalLineFeaturesObstruction(std::multimap<std::
         other_pixels.clear();
         indices_sister.clear();
         indices_self.clear();
-        std::cout<<"exit computing obstruction"<<std::endl;
+        std::cout<<"exit computing obstruction indices_line_ref does not contain enough points ("<<indices_line_ref.size()<<" points)"<<std::endl;
         return;
     }
 
@@ -857,6 +858,17 @@ void intersection::definePlaneConnection()
 {
 //if sufficient quantity of current intersection pixels are really the theoritical connection, the intersection is a connection. if not it is an obstruction
     computeTheoriticalPhiTheta();
+
+    if(plane_ref->index == 22 && plane_neigh->index == 23)
+    {
+        Eigen::MatrixXi test = Eigen::MatrixXi::Zero(Nrow, Ncol);
+        for(auto it = theoritical_pixels.begin(); it != theoritical_pixels.end(); ++it)
+            test(it->first, it->second) = 1;
+        save_image_pgm("test", "", test, 1);
+        getchar();
+        getchar();
+    }
+
     isOpening = false;
     int connect = 0;
     int rad = 2;
@@ -938,7 +950,7 @@ void intersection::definePlaneConnection()
                 else if(k == *it_indices_self)
                     indices_self_temp.insert(n_other);
                 else
-                    std::cout<<"no indice for neigh or ref"<<std::endl;
+                    std::cout<<"Error : no indice for neigh or ref"<<std::endl;
                 ++n_other;
             }
 
@@ -975,16 +987,18 @@ void intersection::definePlaneConnection()
         isLine = true;
         plane_neigh->connected.insert(plane_ref->index);
         plane_ref->connected.insert(plane_neigh->index);
-        std::vector<float> proj;
 
+
+        std::set<float> proj;
         for (int i = 0; i < points.size(); ++i)
-            proj.push_back(points[i].dot(tangente));
+            proj.insert(points[i].dot(tangente));
 
-        float min_proj = *std::min(proj.begin(), proj.end());
-        float max_proj = *std::max(proj.begin(), proj.end());
+        float min_proj = *(proj.begin());
+        float max_proj = *(proj.end());
         length = max_proj - min_proj;
 
         std::set<int> to_add_to_line;
+        rad = 1;
 
         //remove closest points of points of line from other_points and put it to point ---> to change : je veux faire le for sur other_pixels (il doit y en avoir moins) si ya un voisin dans pixel je veux remettre le other_pixel dans pixel
         for (int i = 0; i < pixels.size(); ++i)
@@ -1002,7 +1016,7 @@ void intersection::definePlaneConnection()
                     if(it_other_pixel_found != other_pixels.end())
                     {
                         int idx = std::distance(other_pixels.begin(), it_other_pixel_found);
-                        if( (proj[idx]-min_proj) > (line_margin * length) && (max_proj-proj[idx]) > (line_margin * length))
+                        if( (other_points[idx].dot(tangente)-min_proj) > 0.03 && (max_proj-other_points[idx].dot(tangente)) > 0.03)
                             to_add_to_line.insert(idx);
                     }
                 }
@@ -1026,8 +1040,6 @@ void intersection::definePlaneConnection()
             {
                 if(k == *it_to_add_to_line)
                 {
-//                     points.push_back(other_points[k]);
-//                     pixels.push_back(other_pixels[k]);
                      ++it_to_add_to_line;
                      if(it_to_add_to_line == to_add_to_line.end())
                          --it_to_add_to_line;
@@ -1070,16 +1082,19 @@ void intersection::definePlaneConnection()
                 indices_sister.clear();
             }
         }
+        else if(to_add_to_line.size() ==0)
+            std::cout<<"nothing to erase"<<std::endl;
 
-//        if(plane_ref->index == 4 && plane_neigh->index == 37)
-//        {
-//            Eigen::MatrixXi image_test = Eigen::MatrixXi::Zero(Nrow, Ncol);
-//            for(int idx_pixel = 0; idx_pixel<pixels.size(); ++idx_pixel)
-//                image_test(pixels[idx_pixel].first,pixels[idx_pixel].second) = 1;
-//            std::cout<<"creating test_theoretical_line"<<std::endl;
-//            save_image_pgm("test_theoretical_line", "", image_test, 1);
-//            getchar();
-//        }
+        if(plane_ref->index == 22 && plane_neigh->index == 23)
+        {
+            Eigen::MatrixXi remaining_pixels = Eigen::MatrixXi::Zero(Nrow, Ncol);
+            for( int k = 0 ; k < other_pixels.size(); ++k)
+                remaining_pixels(other_pixels[k].first,other_pixels[k].second) = 1;
+
+            save_image_pgm("remaining_pixels","", remaining_pixels, 1);
+            getchar();
+            getchar();
+        }
     }
     else
     {
@@ -1129,8 +1144,8 @@ std::vector<intersection> intersection::export_sisters()
             ++it_proj_after;
             //dist_after is the distance acceptable in pixels->
             float dist_after_pix = sqrt( pow( pixels[it_proj_after->second].first - pixels[it_proj->second].first , 2 ) + pow( pixels[it_proj_after->second].second - pixels[it_proj->second].second , 2 ) );
-            float dist_after_spat = (points[it_proj_after->second] - points[it_proj->second]).norm();
-            if(dist_after_spat > max_dist_between_points_in_line && dist_after_pix > max_dist_between_pixels_in_line)
+            float dist_after_spat = abs(it_proj_after->first - it_proj->first);
+            if(dist_after_spat > max_dist_between_points_in_line || dist_after_pix > max_dist_between_pixels_in_line)
                 iterators_lim.push_back(it_proj);
         }
     }
@@ -1325,7 +1340,7 @@ bool intersection::computeLim()
 
     for (auto it_points=points.begin(); it_points != points.end(); ++it_points)
     {
-        if(abs(abs(it_points->dot(plane_ref->normal))-plane_ref->distance)<max_plane_distance) // for obstruction cases : we only keep points onto the current plane
+        if(abs(abs(it_points->dot(plane_ref->normal))-plane_ref->distance)<max_planes_distance) // for obstruction cases : we only keep points onto the current plane
             dot.insert(it_points->dot(tangente)); // project points of intersection onto tangent line
     }
 
@@ -1364,7 +1379,10 @@ void intersection::ProjectLineFeaturesOnPlane()
 {
     tangente2D = {(rot.linear() * tangente)(0), (rot.linear() * tangente)(1)};
     Eigen::Vector2d pt2D = {(rot.linear() * pt_mean)(0), (rot.linear() * pt_mean)(1)};
-    normal2D = pt2D - pt2D.dot(tangente2D) * tangente2D;
+//    normal2D = pt2D - pt2D.dot(tangente2D) * tangente2D;
+    normal2D = {-tangente2D(1),tangente2D(0)};
+    if(pt2D.dot(normal2D) < 0)
+        normal2D *= -1;
     normal2D /= normal2D.norm();
     distance2D = pt2D.dot(normal2D);
 }
@@ -1495,7 +1513,9 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
             continue;
         Eigen::Vector2d tangente2D_temp = (points2D[idx1]-points2D[idx2]);
         tangente2D_temp /= tangente2D_temp.norm();
-        Eigen::Vector2d normal2D_temp = points2D[idx1]-points2D[idx1].dot(tangente2D_temp)*tangente2D_temp;
+        Eigen::Vector2d normal2D_temp = {-tangente2D_temp(1),tangente2D_temp(0)};
+        if(points2D[idx1].dot(normal2D_temp) < 0)
+            normal2D_temp *= -1;
         normal2D_temp /= normal2D_temp.norm();
         float distance2D_temp = points2D[idx1].dot(normal2D_temp);
 
@@ -1521,9 +1541,9 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
                 auto it_proj_after = it_proj;
                 ++it_proj_after;
                 float dist_after_pix = sqrt( pow( pixels_init[it_proj_after->second].first - pixels_init[it_proj->second].first , 2 ) + pow( pixels_init[it_proj_after->second].second - pixels_init[it_proj->second].second , 2 ) );
-                float dist_after_spat = (points_init[it_proj_after->second] - points_init[it_proj->second]).norm();
+                float dist_after_spat = abs(it_proj_after->first - it_proj->first);
 
-                if(dist_after_spat > max_dist_between_points_in_line && dist_after_pix > max_dist_between_pixels_in_line) // pixel distance is added to counter problems of sampling on a line far from sensor
+                if(dist_after_spat > max_dist_between_points_in_line || dist_after_pix > max_dist_between_pixels_in_line) // pixel distance is added to counter problems of sampling on a line far from sensor
                     iterators_lim.push_back(it_proj_after);
             }
         }

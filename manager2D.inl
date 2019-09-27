@@ -231,7 +231,7 @@ void manager2D::segmentBiggest()
 
 void manager2D::removeLittleObjects(int size_min)
 {
-   Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> region  = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>::Zero(Nrow, Ncol);
+   Eigen::MatrixXi region  = Eigen::MatrixXi::Zero(Nrow, Ncol);
    Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>::Zero(Nrow, Ncol);
    std::set<std::pair<int,int>> list_pixels;
     //croissance de région à partir du premier pixel blanc
@@ -248,7 +248,7 @@ void manager2D::removeLittleObjects(int size_min)
                 list_pixels.insert(std::make_pair(i,j));
                 while (list_pixels.size() > 0)
                 {
-                    region(list_pixels.begin()->first, list_pixels.begin()->second) = true;
+                    region(list_pixels.begin()->first, list_pixels.begin()->second) = 1;
                     processed(list_pixels.begin()->first, list_pixels.begin()->second) = true;
                     std::vector<std::pair<int,int>> neighbors = getNeighbors(image_clusterized, std::make_pair(list_pixels.begin()->first,list_pixels.begin()->second), 1, processed);
                     list_pixels.erase(list_pixels.begin());
@@ -256,7 +256,7 @@ void manager2D::removeLittleObjects(int size_min)
                         list_pixels.insert(neighbors[k]);
                 }
 
-                if(region.cast<int>().sum()<=size_min)
+                if(region.sum()<=size_min)
                 {
                     for(int region_i = 0; region_i < Nrow; ++region_i)
                     {
@@ -264,33 +264,37 @@ void manager2D::removeLittleObjects(int size_min)
                         {
                             if(region(region_i, region_j))
                             {
-                                int rad = 2;
-                                int min_ki = std::max(region_i-rad, 0);
-                                int max_ki = std::min(region_i+rad, Nrow-1);
-                                int min_kj = std::max(region_j-rad, lim_theta.first);
-                                int max_kj = std::min(region_j+rad, lim_theta.second);
+                                int rad = 1;
                                 bool found = false;
-
-                                for(int ri = min_ki; ri <= max_ki; ++ri)
+                                while (!found || rad>=10)
                                 {
-                                    for(int rj = min_kj; rj <= max_kj; ++rj)
+                                    int min_ki = std::max(region_i-rad, 0);
+                                    int max_ki = std::min(region_i+rad, Nrow-1);
+                                    int min_kj = std::max(region_j-rad, lim_theta.first);
+                                    int max_kj = std::min(region_j+rad, lim_theta.second);
+
+                                    for(int ri = min_ki; ri <= max_ki; ++ri)
                                     {
-                                        if(!region(ri, rj))
+                                        for(int rj = min_kj; rj <= max_kj; ++rj)
                                         {
-                                            image_clusterized(region_i, region_j) = image_clusterized(ri,rj);
-                                            found = true;
-                                            break;
+                                            if(!region(ri, rj))
+                                            {
+                                                image_clusterized(region_i, region_j) = image_clusterized(ri,rj);
+                                                found = true;
+                                                break;
+                                            }
                                         }
+                                        if(found)
+                                            break;
                                     }
-                                    if(found)
-                                        break;
+                                    ++rad;
                                 }
                             }
                         }
                     }
                 }
 
-                region = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>::Zero(Nrow, Ncol);
+                region = Eigen::MatrixXi::Zero(Nrow, Ncol);
                 list_pixels.clear();
             }
         }

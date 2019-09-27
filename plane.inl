@@ -1,6 +1,6 @@
 void plane::computeNormal()
 {
-    points.resize(pts.size(), 3);
+    Eigen::MatrixXd points = Eigen::MatrixXd::Zero(pts.size(), 3);
     for(int k = 0; k<pts.size(); ++k)
         points.row(k) = pts[k];
     Eigen::MatrixXd centered_points (points.rows(), 3);
@@ -12,6 +12,14 @@ void plane::computeNormal()
     if(normal.dot(mean_point_)>0)
         normal *= -1;
     distance = abs(normal.dot(mean_point_));
+}
+
+void plane::computeMeanPoint()
+{
+    mean_point_ = Eigen::Vector3d::Zero();
+    for(int i = 0; i<pts.size(); ++i)
+        mean_point_ += pts[i];
+    mean_point_ /= pts.size();
 }
 
 
