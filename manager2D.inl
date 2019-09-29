@@ -196,8 +196,8 @@ void manager2D::segmentBiggest()
 {
    Eigen::MatrixXi region  = Eigen::MatrixXi::Zero(Nrow, Ncol);
    Eigen::MatrixXi region_temp = Eigen::MatrixXi::Zero(Nrow, Ncol);
-   Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>::Zero(Nrow, Ncol);
-   std::set<std::pair<int,int>> list_pixels;
+   Eigen::MatrixXi processed = Eigen::MatrixXi::Zero(Nrow, Ncol);
+   std::vector<std::pair<int,int>> list_pixels;
     //croissance de région à partir du premier pixel blanc
     //si la région est plus petite elle dégage
     for(int i = 0; i < Nrow; ++i)
@@ -206,15 +206,17 @@ void manager2D::segmentBiggest()
         {
             if(image_morpho(i,j)>0 && !processed(i,j)) // seed
             {
-                list_pixels.insert(std::make_pair(i,j));
-                while (list_pixels.size() > 0)
+                list_pixels.push_back(std::make_pair(i,j));
+                for(int k = 0; k < list_pixels.size(); ++k)
                 {
-                    region_temp(list_pixels.begin()->first,list_pixels.begin()->second) = 1;
-                    processed(list_pixels.begin()->first,list_pixels.begin()->second) = true;
-                    std::vector<std::pair<int,int>> neighbors = getNeighbors(image_morpho, std::make_pair(list_pixels.begin()->first,list_pixels.begin()->second), 1, processed);
-                    list_pixels.erase(list_pixels.begin());
-                    for(int k = 0; k < neighbors.size(); ++k)
-                        list_pixels.insert(neighbors[k]);
+                    if(!processed(list_pixels[k].first,list_pixels[k].second))
+                    {
+                        region_temp(list_pixels[k].first,list_pixels[k].second) = 1;
+                        processed(list_pixels[k].first,list_pixels[k].second) = 1;
+                        std::vector<std::pair<int,int>> neighbors = getNeighbors(image_morpho, list_pixels[k], 1);
+                        for(int neigh = 0; neigh < neighbors.size(); ++neigh)
+                            list_pixels.push_back(neighbors[neigh]);
+                    }
                 }
 
                 if(region_temp.sum()>region.sum())
@@ -232,8 +234,8 @@ void manager2D::segmentBiggest()
 void manager2D::removeLittleObjects(int size_min)
 {
    Eigen::MatrixXi region  = Eigen::MatrixXi::Zero(Nrow, Ncol);
-   Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> processed = Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>::Zero(Nrow, Ncol);
-   std::set<std::pair<int,int>> list_pixels;
+   Eigen::MatrixXi processed = Eigen::MatrixXi::Zero(Nrow, Ncol);
+
     //croissance de région à partir du premier pixel blanc
     //si la région est trop petite, elle dégage
 
@@ -245,18 +247,28 @@ void manager2D::removeLittleObjects(int size_min)
         {
             if(image_clusterized(i,j) == max_value && !processed(i,j)) // seed
             {
-                list_pixels.insert(std::make_pair(i,j));
-                while (list_pixels.size() > 0)
+                std::vector<std::pair<int,int>> list_pixels;
+                list_pixels.push_back(std::make_pair(i,j));
+                double count = 0;
+                region = Eigen::MatrixXi::Zero(Nrow, Ncol);
+                for(int k = 0; k < list_pixels.size(); ++k)
                 {
-                    region(list_pixels.begin()->first, list_pixels.begin()->second) = 1;
-                    processed(list_pixels.begin()->first, list_pixels.begin()->second) = true;
-                    std::vector<std::pair<int,int>> neighbors = getNeighbors(image_clusterized, std::make_pair(list_pixels.begin()->first,list_pixels.begin()->second), 1, processed);
-                    list_pixels.erase(list_pixels.begin());
-                    for(int k = 0; k < neighbors.size(); ++k)
-                        list_pixels.insert(neighbors[k]);
+                    if(!processed(list_pixels[k].first,list_pixels[k].second))
+                    {
+                        region(list_pixels[k].first, list_pixels[k].second) = 1;
+                        processed(list_pixels[k].first, list_pixels[k].second) = 1;
+                        int rad = 1;
+                        std::vector<std::pair<int,int>> neighbors = getNeighbors(image_clusterized, list_pixels[k], rad);
+                        if(neighbors.size()<3)
+                            ++count;
+                        for(int neigh = 0; neigh < neighbors.size(); ++neigh)
+                            list_pixels.push_back(neighbors[neigh]);
+                    }
                 }
 
-                if(region.sum()<=size_min)
+                count /= region.sum();
+
+                if(region.sum()<=size_min || count > 0.5)
                 {
                     for(int region_i = 0; region_i < Nrow; ++region_i)
                     {
@@ -293,15 +305,12 @@ void manager2D::removeLittleObjects(int size_min)
                         }
                     }
                 }
-
-                region = Eigen::MatrixXi::Zero(Nrow, Ncol);
-                list_pixels.clear();
             }
         }
     }
 }
 
-std::vector<std::pair<int,int>> manager2D::getNeighbors(Eigen::MatrixXi& image, std::pair<int,int> pixel, int rad, Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>& processed)
+std::vector<std::pair<int,int>> manager2D::getNeighbors(Eigen::MatrixXi& image, std::pair<int,int> pixel, int rad)
 {
     std::vector<std::pair<int,int>> neighbors;
     int i = pixel.first;
@@ -313,13 +322,13 @@ std::vector<std::pair<int,int>> manager2D::getNeighbors(Eigen::MatrixXi& image, 
 
     int value = image(pixel.first, pixel.second);
 
-    for(int ki = min_ki; ki<=max_ki; ++ki)
+    for(int ki = min_ki; ki <= max_ki; ++ki)
     {
-        for(int kj = min_kj; kj<=max_kj; ++kj)
+        for(int kj = min_kj; kj <= max_kj; ++kj)
         {
             if(!(i == ki && j == kj))
             {
-                if(image(ki,kj) == value && !processed(ki,kj))
+                if(image(ki,kj) == value)
                     neighbors.push_back(std::make_pair(ki ,kj));
             }
         }
@@ -338,7 +347,7 @@ std::vector<std::pair<int,int>> manager2D::getNeighbors(Eigen::MatrixXi& image, 
             {
                 if(!(i == ki && j == kj))
                 {
-                    if(image(ki,kj) == value && !processed(ki,kj))
+                    if(image(ki,kj) == value)
                         neighbors.push_back(std::make_pair(ki ,kj));
                 }
             }
@@ -358,7 +367,7 @@ std::vector<std::pair<int,int>> manager2D::getNeighbors(Eigen::MatrixXi& image, 
             {
                 if(!(i == ki && j == kj))
                 {
-                    if(image(ki,kj)>0  && !processed(ki,kj))
+                    if(image(ki,kj)>0)
                         neighbors.push_back(std::make_pair(ki ,kj));
                 }
             }

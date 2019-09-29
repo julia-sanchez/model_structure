@@ -24,8 +24,10 @@ const double normals_similarity_to_add_neighbors = 0.9;                         
 const double not_parallel_dot_threshold = 0.9961;
 const double angle_parallel_threshold = 15;
 const int incertainty_pixels = 6;
-const double min_dist_planes =0.02;                                                  //min distance between two parallel planes (if closer gathering)
+const double min_dist_planes = 0.02;                                                //min distance between two parallel planes (if closer gathering)
+const double angle_to_gather = 25;                                                  //in degree
 const double min_polygone_angle = 10 * M_PI/180;
+const double lines_continuity_max_distance = 0.02;
 
 class manager
 {
@@ -117,7 +119,7 @@ private:
     void fill_edges();
     bool arePlanesClose(int a, int b);
     void actualizeChanged();
-    bool DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal, std::vector<Eigen::Vector3d>& vector_crossed);
+    bool DoesCrossPoly(std::vector<Eigen::Vector3d> jonction, std::vector<std::vector<Eigen::Vector3d>> polys, Eigen::Vector3d normal, int *cross_idx);
     bool isLineConnectedInPlane(int idx_line, int idx_plane, int end);
     void correctLinesCrossing();
     void clean_edges();
@@ -127,10 +129,11 @@ private:
     void fusionCorners();
     void fill_edges_in_planes();
     bool DoesCross(Eigen::Affine3d rot, std::vector<Eigen::Vector3d> jonction, std::vector<Eigen::Vector3d> vec_tested);
-    bool DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p, std::vector<Eigen::Vector3d>& vector_crossed);
+    bool DoesCrossLines(std::vector<Eigen::Vector3d> jonction, plane& p, int *cross_idx);
     void recoverEqualStartEnd();
     double threshold_plane_belonging_;
     std::vector<std::pair<int,int>> getNeighPixels(std::pair<int,int> pa, int rad);
+    void eraseFromAllEdges(std::set<int> to_erase);
 
 };
 

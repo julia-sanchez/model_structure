@@ -13,6 +13,7 @@
 
 const double eps = 0.00001;
 const double max_planes_distance = 0.05;
+const double min_plane_width = 0.02; //cm
 const double max_line_distance = 0.03;
 const int ransac_iterations = 50000;
 const int min_number_points_on_line = 4;

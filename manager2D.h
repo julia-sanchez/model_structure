@@ -60,7 +60,7 @@ private:
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_other_bool;
     std::map<std::pair<int,int>, int> XY2planeIdx_boundary;
     Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> mynot(Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> image_in);
-    std::vector<std::pair<int,int>> getNeighbors(Eigen::MatrixXi& image, std::pair<int,int> pixel, int rad, Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic>& processed);
+    std::vector<std::pair<int,int>> getNeighbors(Eigen::MatrixXi& image, std::pair<int,int> pixel, int rad);
     void segmentBiggest();
 
     void detect_margin();

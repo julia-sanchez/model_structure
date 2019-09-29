@@ -9,9 +9,10 @@ void plane::computeNormal()
     Eigen::Matrix3d covariance = centered_points.transpose()*centered_points/points.rows();
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> es(covariance);
     normal = es.eigenvectors().col(0);
+    normal /= normal.norm();
     if(normal.dot(mean_point_)>0)
         normal *= -1;
-    distance = abs(normal.dot(mean_point_));
+    distance = -normal.dot(mean_point_);
 }
 
 void plane::computeMeanPoint()

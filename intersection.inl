@@ -859,15 +859,15 @@ void intersection::definePlaneConnection()
 //if sufficient quantity of current intersection pixels are really the theoritical connection, the intersection is a connection. if not it is an obstruction
     computeTheoriticalPhiTheta();
 
-    if(plane_ref->index == 22 && plane_neigh->index == 23)
-    {
-        Eigen::MatrixXi test = Eigen::MatrixXi::Zero(Nrow, Ncol);
-        for(auto it = theoritical_pixels.begin(); it != theoritical_pixels.end(); ++it)
-            test(it->first, it->second) = 1;
-        save_image_pgm("test", "", test, 1);
-        getchar();
-        getchar();
-    }
+//    if(plane_ref->index == 22 && plane_neigh->index == 23)
+//    {
+//        Eigen::MatrixXi test = Eigen::MatrixXi::Zero(Nrow, Ncol);
+//        for(auto it = theoritical_pixels.begin(); it != theoritical_pixels.end(); ++it)
+//            test(it->first, it->second) = 1;
+//        save_image_pgm("test", "", test, 1);
+//        getchar();
+//        getchar();
+//    }
 
     isOpening = false;
     int connect = 0;
@@ -1085,16 +1085,16 @@ void intersection::definePlaneConnection()
         else if(to_add_to_line.size() ==0)
             std::cout<<"nothing to erase"<<std::endl;
 
-        if(plane_ref->index == 22 && plane_neigh->index == 23)
-        {
-            Eigen::MatrixXi remaining_pixels = Eigen::MatrixXi::Zero(Nrow, Ncol);
-            for( int k = 0 ; k < other_pixels.size(); ++k)
-                remaining_pixels(other_pixels[k].first,other_pixels[k].second) = 1;
+//        if(plane_ref->index == 22 && plane_neigh->index == 23)
+//        {
+//            Eigen::MatrixXi remaining_pixels = Eigen::MatrixXi::Zero(Nrow, Ncol);
+//            for( int k = 0 ; k < other_pixels.size(); ++k)
+//                remaining_pixels(other_pixels[k].first,other_pixels[k].second) = 1;
 
-            save_image_pgm("remaining_pixels","", remaining_pixels, 1);
-            getchar();
-            getchar();
-        }
+//            save_image_pgm("remaining_pixels","", remaining_pixels, 1);
+//            getchar();
+//            getchar();
+//        }
     }
     else
     {
@@ -1438,7 +1438,7 @@ bool intersection::isDoubled(std::vector<intersection> all_edges)
             if(!same)
             {
                 bool parallel = acos(abs(all_edges[k].tangente.dot(tangente))) < 15*M_PI/180;
-                bool lines_distance = ((all_edges[k].pt_mean - pt_mean) - (all_edges[k].pt_mean - pt_mean).dot(all_edges[k].tangente)*all_edges[k].tangente).norm()  < 0.05;
+                bool lines_distance = ((all_edges[k].pt_mean - pt_mean) - (all_edges[k].pt_mean - pt_mean).dot(all_edges[k].tangente)*all_edges[k].tangente).norm()  < 0.02;
 
                 Eigen::Vector3d tangente_temp;
 
@@ -1483,6 +1483,7 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
 {
     int idx1, idx2;
     int max_points = 0;
+    int min_error = 10000000;
     std::map<double, int> proj;
 
     std::srand (std::time(NULL));
@@ -1569,9 +1570,14 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
             proj_temp = proj_temp_temp;
         }
 
+        double error_temp = 0;
+        for (auto it_proj = proj.begin(); it_proj != proj.end(); ++it_proj)
+            error_temp += abs(points2D[it_proj->second].dot(normal2D_temp));
+        error_temp /= proj.size();
+
         //check if the line is the best--------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-        if(proj_temp.size()>= max_points)
+        if(proj_temp.size()> max_points || (proj_temp.size() == max_points && error_temp < min_error))
         {
             auto start_proj_temp = proj_temp.begin();
             auto end_proj_temp = proj_temp.end();
@@ -1583,6 +1589,7 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
             distance2D = distance2D_temp;
             max_points = proj_temp.size();
             proj = proj_temp; 
+            min_error = error_temp;
         }
     }
 
@@ -1726,11 +1733,6 @@ void intersection::RANSAC(std::vector<Eigen::Vector3d, Eigen::aligned_allocator<
 
                 tangente2D = {sin(theta), -cos(theta)};
                 has_points_after_ls = true;
-
-//                std::cout<< "number of points : "<<n<<std::endl;
-//                std::cout<< "normal : "<<normal2D.transpose()<<std::endl;
-//                std::cout<< "distance 2D : "<<distance2D<<std::endl;
-//                std::cout<<  "theta = "<<theta<<std::endl<<std::endl;
             }
             else
             {
