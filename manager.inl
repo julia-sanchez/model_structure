@@ -1323,12 +1323,7 @@ void manager::fusionCorners()
                 //check if there is other corner with same connection line involved and which is a lineintersection
                 if( (possible_corners[c1].pt - possible_corners[c].pt).norm() < fusion_max_dist && idx3 != 100000 )
                 {
-                    bool line_idx1_has_c1 = (all_edges[idx1].new_start_pt - possible_corners[c1].pt).norm() < epsilon || (all_edges[idx1].new_end_pt - possible_corners[c1].pt).norm() < epsilon;
                     bool line_idx3_has_c1 = (all_edges[idx3].new_start_pt - possible_corners[c1].pt).norm() < epsilon || (all_edges[idx3].new_end_pt - possible_corners[c1].pt).norm() < epsilon;
-
-//                    bool line_idx1_is_close_c1 = (all_edges[idx1].new_start_pt - possible_corners[c1].pt).norm() < epsilon || (all_edges[idx1].new_end_pt - possible_corners[c1].pt).norm() < 0.1;
-//                    bool line_idx3_is_close_c1 = (all_edges[idx3].new_start_pt - possible_corners[c1].pt).norm() < epsilon || (all_edges[idx3].new_end_pt - possible_corners[c1].pt).norm() < 0.1;
-
                     bool sufficient_length_for_no_connections = true;
 
                     if(!all_edges[idx1].isConnection)
@@ -1340,9 +1335,8 @@ void manager::fusionCorners()
                     if(!all_edges[idx3].isConnection)
                       sufficient_length_for_no_connections = sufficient_length_for_no_connections && (all_edges[idx3].new_start_pt - all_edges[idx3].new_end_pt).norm() > 0.1;
 
-
 //                    if( ( (line_idx1_has_c1 && line_idx3_is_close_c1) || (line_idx1_is_close_c1 && line_idx3_has_c1) ) && sufficient_length_for_no_connections)
-                    if( ( line_idx1_has_c1 && line_idx3_has_c1 ) && sufficient_length_for_no_connections)
+                    if( line_idx3_has_c1 && sufficient_length_for_no_connections) // normalement idx1 n'a pas c1 puisqu'elle a c
                     {
                         //check if they are connected at the same extremity of connection line
                         bool start_idx1_c = false;
@@ -1900,22 +1894,18 @@ void manager::computeLines()
                     std::vector<intersection> vec_sisters = intersections[k].export_sisters();
 
                     std::cout<<"Exporting connection pieces"<<std::endl<<std::endl;
-                    std::cout<<"Number of pieces : "<<  vec_sisters.size() + 1<<std::endl<<std::endl;
-                    for(int idx_vec_sisters = 0; idx_vec_sisters < vec_sisters.size(); ++idx_vec_sisters)
+                    std::cout<<"Number of pieces : "<<  vec_sisters.size()<<std::endl<<std::endl;
+                    for(int idx_vec_sisters = 1; idx_vec_sisters < vec_sisters.size(); ++idx_vec_sisters)
                     {
                         if(vec_sisters[idx_vec_sisters].points.size() >= min_number_points_on_line)
                         {
-                            std::cout<<"baby connection is n°"<<intersections.size()<<std::endl<<std::endl;
+                            std::cout<<"piece one of connection becomes intersection n°"<<intersections.size()<<std::endl<<std::endl;
                             intersections.push_back(vec_sisters[idx_vec_sisters]);
                         }
-                        else
-                        {
-                            std::cout<<"baby connection not added :  only contains : "<<vec_sisters[idx_vec_sisters].points.size()<<" points"<<std::endl<<std::endl;
-                            for(int idx_points_vec_sisters = 0; idx_points_vec_sisters<vec_sisters[idx_vec_sisters].points.size(); ++idx_points_vec_sisters)
-                                inter_remaining.points.push_back(vec_sisters[idx_vec_sisters].points[idx_points_vec_sisters]);
-                        }
                     }
-                    if(intersections[k].points.size()< min_number_points_on_line)
+                    if(vec_sisters[0].points.size() >= min_number_points_on_line)
+                        intersections[k] = vec_sisters[0];
+                    else
                         remove_intersection(&k);
                 }
                 else
@@ -2282,7 +2272,7 @@ void manager::computeTheoriticalPlanesIntersections()
                             else
                                 third_plane = all_edges[j].plane_ref;
 
-                            if(!already_treated[first_plane->index][second_plane->index][third_plane->index])
+                            if(!already_treated[first_plane->index][second_plane->index][third_plane->index] && third_plane->index != second_plane->index)
                             {
 
                                 corner c;

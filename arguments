@@ -1,0 +1,5 @@
+room.pcd 0.15 2400 1200 360 180 500 0.02 2 0.02 0 0
+
+reference/stairs_subsampled_radius_10cm.pcd 0.15 3000 1500 360 180 500 0.02 2 0.02 200 0
+
+

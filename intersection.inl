@@ -1126,12 +1126,16 @@ std::vector<intersection> intersection::export_sisters()
 {
     // divide line into various if  large space in the middle (example : door opening in wall)
 
-    std::map<double, int> proj_temp; // map to keep the link point projection on line / index of point and to order depending on projection
+    //fill a map of projection on tangente
 
+    std::map<double, int> proj_temp; // map to keep the link point projection on line / index of point and to order depending on projection
     for(int j = 0; j< points.size(); ++j)
         proj_temp.insert(std::make_pair(points[j].dot(tangente), j));
 
+    //fill a vector of iterators to this map "iterators_lim"
+
     std::vector<std::map<double, int>::iterator> iterators_lim;
+    iterators_lim.push_back(proj_temp.begin());
 
     auto last_it = proj_temp.end();
     --last_it;
@@ -1143,48 +1147,40 @@ std::vector<intersection> intersection::export_sisters()
             auto it_proj_after = it_proj;
             ++it_proj_after;
             //dist_after is the distance acceptable in pixels->
-            float dist_after_pix = sqrt( pow( pixels[it_proj_after->second].first - pixels[it_proj->second].first , 2 ) + pow( pixels[it_proj_after->second].second - pixels[it_proj->second].second , 2 ) );
+            float dist_after_pix1 = sqrt( pow( pixels[it_proj_after->second].first - pixels[it_proj->second].first , 2 ) + pow( pixels[it_proj_after->second].second - pixels[it_proj->second].second , 2 ) );
+            float pix_left = std::min(pixels[it_proj_after->second].first, pixels[it_proj->second].first);
+            float pix_right = std::max(pixels[it_proj_after->second].first, pixels[it_proj->second].first);
+            float dist_after_pix2 = sqrt( pow( (Nrow - pix_right) + pix_left , 2 ) + pow(  pixels[it_proj_after->second].second - pixels[it_proj->second].second , 2 ) );
+            float dist_after_pix = std::min(dist_after_pix1, dist_after_pix2);
             float dist_after_spat = abs(it_proj_after->first - it_proj->first);
             if(dist_after_spat > max_dist_between_points_in_line || dist_after_pix > max_dist_between_pixels_in_line)
-                iterators_lim.push_back(it_proj);
+                iterators_lim.push_back(it_proj_after);
         }
     }
 
     iterators_lim.push_back(proj_temp.end());
 
     std::vector<intersection> vec_sisters;
-    if(iterators_lim.size()>1)
+    if(iterators_lim.size()>2) // if intersection was cut i will return a full vec_sisters if not i do not do nothing
     {
         //fill this intersection with first line piece found
         std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> points_temp;
         std::vector<std::pair<int,int>> pixels_temp;
 
-        int n = 0;
+        for(int n = 0; n < iterators_lim.size()-1; ++n)
+        {
+            auto it_start = iterators_lim[n];
+            auto it_end = iterators_lim[n+1];
 
-        do{
             points_temp.clear();
             pixels_temp.clear();
-            auto it_start = proj_temp.begin();
-            if(n>0)
-            {
-                it_start = iterators_lim[n-1];
-                ++it_start;
-            }
-            auto it_end = iterators_lim[n];
-            ++it_end;
             for(auto it_proj_temp =  it_start; it_proj_temp != it_end; ++it_proj_temp)
             {
                 points_temp.push_back(points[it_proj_temp->second]);
                 pixels_temp.push_back(pixels[it_proj_temp->second]);
             }
-            ++n;
-        }
-        while(points_temp.size()<min_number_points_on_line && n<iterators_lim.size());
 
-        if(n<iterators_lim.size())
-        {
-            // fill sister pieces
-            iterators_lim.push_back(proj_temp.end());
+            // fill vec_sister with current sister piece
             intersection inter (plane_ref, plane_neigh, delta_phi, delta_theta);
             inter.normal = normal;
             inter.tangente = tangente;
@@ -1196,29 +1192,14 @@ std::vector<intersection> intersection::export_sisters()
             inter.isOpening = false;
             inter.isLine = true;
 
-            auto it_start = iterators_lim[n-1];
-            ++it_start;
-            for(auto it_proj_temp = it_start; it_proj_temp != proj_temp.end(); ++it_proj_temp)
-            {
-                inter.points.push_back(points[it_proj_temp->second]);
-                inter.pixels.push_back(pixels[it_proj_temp->second]);
-                if(it_proj_temp == iterators_lim[n])
-                {
-                    if(inter.points.size()>min_number_points_on_line)
-                        vec_sisters.push_back(inter);
-                    ++n;
-                    inter.points.clear();
-                    inter.pixels.clear();
-                }
-            }
-
-            //add last iterators_lim to end of proj_temp
-            if(inter.points.size()>min_number_points_on_line)
-                vec_sisters.push_back(inter);
+            inter.points = points_temp;
+            inter.pixels = pixels_temp;
+            vec_sisters.push_back(inter);
         }
-
-        points = points_temp;
-        pixels = pixels_temp;
+    }
+    else
+    {
+        vec_sisters.push_back(*this);
     }
 
     return vec_sisters;
