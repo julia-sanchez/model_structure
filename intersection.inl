@@ -859,15 +859,12 @@ void intersection::definePlaneConnection()
 //if sufficient quantity of current intersection pixels are really the theoritical connection, the intersection is a connection. if not it is an obstruction
     computeTheoriticalPhiTheta();
 
-//    if(plane_ref->index == 22 && plane_neigh->index == 23)
-//    {
-//        Eigen::MatrixXi test = Eigen::MatrixXi::Zero(Nrow, Ncol);
-//        for(auto it = theoritical_pixels.begin(); it != theoritical_pixels.end(); ++it)
-//            test(it->first, it->second) = 1;
-//        save_image_pgm("test", "", test, 1);
-//        getchar();
-//        getchar();
-//    }
+    Eigen::MatrixXi test = Eigen::MatrixXi::Zero(Nrow, Ncol);
+    for(auto it = theoritical_pixels.begin(); it != theoritical_pixels.end(); ++it)
+        test(it->first, it->second) = 1;
+    save_image_pgm("test", "", test, 1);
+    getchar();
+    getchar();
 
     isOpening = false;
     int connect = 0;
